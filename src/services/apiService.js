@@ -213,6 +213,20 @@ const buildDefaultQuiz = () => [
   },
 ];
 
+const normalizeStats = (stats = {}) => ({
+  readingTime: stats.readingTime || 0,
+  quizzesPassed: stats.quizzesPassed || 0,
+  bestStreak: stats.bestStreak || 0,
+  currentStreak: stats.currentStreak || 0,
+  lastActiveDate: stats.lastActiveDate || null,
+  pagesRead: stats.pagesRead || 0,
+  importedCount: stats.importedCount || 0,
+  scannedCount: stats.scannedCount || 0,
+  perfectQuizzes: stats.perfectQuizzes || 0,
+  audioSessions: stats.audioSessions || 0,
+  completedTextIds: Array.isArray(stats.completedTextIds) ? stats.completedTextIds : [],
+});
+
 const normalizeUser = (user) => {
   const xp = user?.xp || 0;
   const level = user?.level || getLevelFromXp(xp);
@@ -228,19 +242,7 @@ const normalizeUser = (user) => {
     xp,
     booksRead: user.booksRead || 0,
     badges: Array.isArray(user.badges) ? user.badges : [],
-    stats: {
-      readingTime: user.stats?.readingTime || 0,
-      quizzesPassed: user.stats?.quizzesPassed || 0,
-      bestStreak: user.stats?.bestStreak || 0,
-      currentStreak: user.stats?.currentStreak || 0,
-      lastActiveDate: user.stats?.lastActiveDate || null,
-      pagesRead: user.stats?.pagesRead || 0,
-      importedCount: user.stats?.importedCount || 0,
-      scannedCount: user.stats?.scannedCount || 0,
-      perfectQuizzes: user.stats?.perfectQuizzes || 0,
-      audioSessions: user.stats?.audioSessions || 0,
-      completedTextIds: Array.isArray(user.stats?.completedTextIds) ? user.stats.completedTextIds : [],
-    },
+    stats: normalizeStats(user.stats),
   };
 };
 
@@ -503,19 +505,7 @@ const loadMockDb = () => {
     password: user.password || '',
     level: user.level || getLevelFromXp(user.xp || 0),
     levelName: user.levelName || getLevelName(user.level || getLevelFromXp(user.xp || 0)),
-    stats: {
-      readingTime: user.stats?.readingTime || 0,
-      quizzesPassed: user.stats?.quizzesPassed || 0,
-      bestStreak: user.stats?.bestStreak || 0,
-      currentStreak: user.stats?.currentStreak || 0,
-      lastActiveDate: user.stats?.lastActiveDate || null,
-      pagesRead: user.stats?.pagesRead || 0,
-      importedCount: user.stats?.importedCount || 0,
-      scannedCount: user.stats?.scannedCount || 0,
-      perfectQuizzes: user.stats?.perfectQuizzes || 0,
-      audioSessions: user.stats?.audioSessions || 0,
-      completedTextIds: Array.isArray(user.stats?.completedTextIds) ? user.stats.completedTextIds : [],
-    },
+    stats: normalizeStats(user.stats),
   }));
   const texts = mergedDb.texts.map((text) => ({
     ...text,
@@ -825,9 +815,10 @@ const mockHandlers = {
     } else if (lastActiveDate === today) {
       currentStreak = Math.max(currentStreak, 1);
     } else {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      currentStreak = lastActiveDate === yesterday.toDateString() ? currentStreak + 1 : 1;
+      const prevDay = new Date();
+      prevDay.setDate(prevDay.getDate() - 1);
+      const prevDayString = prevDay.toDateString();
+      currentStreak = lastActiveDate === prevDayString ? currentStreak + 1 : 1;
     }
     const bestStreak = Math.max(user.stats?.bestStreak || 0, currentStreak);
 

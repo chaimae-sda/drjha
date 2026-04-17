@@ -64,11 +64,11 @@ const getKeywordPool = (text = '') =>
 
 const shuffle = (items) => [...items].sort(() => Math.random() - 0.5);
 
-const buildFallbackOptions = (answer, keywords = []) => {
+const buildFallbackOptions = (answer, keywords = [], fallbacks = ['معلومة عامة', 'تفصيل ثانوي']) => {
   const distractors = keywords.filter((item) => item && item !== answer).slice(0, 4);
 
   while (distractors.length < 2) {
-    distractors.push(distractors.length === 0 ? 'معلومة عامة' : 'تفصيل ثانوي');
+    distractors.push(fallbacks[distractors.length] || 'تفصيل ثانوي');
   }
 
   return shuffle([answer, distractors[0], distractors[1]]);
@@ -84,38 +84,77 @@ const generateQuestionsFromText = (text) => {
     return [];
   }
 
-  const keywords = getKeywordPool(sourceText);
-  const sentences = sourceText
-    .split(/[.!?؟\n]+/)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 24);
+  const frKeywords = getKeywordPool(originalText || sourceText);
+  const darijaKeywords = getKeywordPool(darijaText || sourceText);
+  const allKeywords = getKeywordPool(sourceText);
 
-  const firstAnswer = keywords[0] || title;
-  const secondAnswer = keywords[1] || 'التعلم';
-  const thirdAnswer = keywords[2] || 'المعرفة';
+  const frSentences = originalText
+    .split(/[.!?\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 24);
+
+  const firstFrAnswer = frKeywords[0] || allKeywords[0] || title;
+  const secondFrAnswer = frKeywords[1] || allKeywords[1] || 'apprentissage';
+  const thirdFrAnswer = frKeywords[2] || allKeywords[2] || 'connaissance';
+
+  const firstDarijaAnswer = darijaKeywords[0] || allKeywords[0] || title;
+  const secondDarijaAnswer = darijaKeywords[1] || allKeywords[1] || 'التعلم';
+  const thirdDarijaAnswer = darijaKeywords[2] || allKeywords[2] || 'المعرفة';
+
+  const frFallbacks = ['information générale', 'détail secondaire'];
+  const enFallbacks = ['general info', 'secondary detail'];
+  const darijaFallbacks = ['معلومة عامة', 'تفصيل ثانوي'];
 
   return [
     {
       _id: `q_${text?._id || 'doc'}_1`,
+      questionTextFr: `De quoi parle principalement ce document ?`,
+      questionTextEn: `What is this document mainly about?`,
       questionTextDarija: `هاد الوثيقة اللي سفتّي كتدور على شنو بالأساس؟`,
-      correctAnswer: firstAnswer,
-      options: buildFallbackOptions(firstAnswer, keywords),
+      correctAnswerFr: firstFrAnswer,
+      correctAnswerEn: firstFrAnswer,
+      correctAnswerDarija: firstDarijaAnswer,
+      optionsFr: buildFallbackOptions(firstFrAnswer, frKeywords, frFallbacks),
+      optionsEn: buildFallbackOptions(firstFrAnswer, frKeywords, enFallbacks),
+      optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaKeywords, darijaFallbacks),
+      correctAnswer: firstDarijaAnswer,
+      options: buildFallbackOptions(firstDarijaAnswer, darijaKeywords, darijaFallbacks),
       xpReward: 20,
     },
     {
       _id: `q_${text?._id || 'doc'}_2`,
+      questionTextFr: `Quel concept important apparaît dans "${title}" ?`,
+      questionTextEn: `What key concept appears in "${title}"?`,
       questionTextDarija: `شنو من مفهوم بان مهم فالنص "${title}"؟`,
-      correctAnswer: secondAnswer,
-      options: buildFallbackOptions(secondAnswer, keywords.slice().reverse()),
+      correctAnswerFr: secondFrAnswer,
+      correctAnswerEn: secondFrAnswer,
+      correctAnswerDarija: secondDarijaAnswer,
+      optionsFr: buildFallbackOptions(secondFrAnswer, frKeywords.slice().reverse(), frFallbacks),
+      optionsEn: buildFallbackOptions(secondFrAnswer, frKeywords.slice().reverse(), enFallbacks),
+      optionsDarija: buildFallbackOptions(secondDarijaAnswer, darijaKeywords.slice().reverse(), darijaFallbacks),
+      correctAnswer: secondDarijaAnswer,
+      options: buildFallbackOptions(secondDarijaAnswer, darijaKeywords.slice().reverse(), darijaFallbacks),
       xpReward: 20,
     },
     {
       _id: `q_${text?._id || 'doc'}_3`,
-      questionTextDarija: sentences[0]
-        ? `شنو الفكرة اللي كتفهم من هاد الجزء: "${sentences[0].slice(0, 44)}..."؟`
-        : 'شنو الفكرة الرئيسية فهاد الوثيقة؟',
-      correctAnswer: thirdAnswer,
-      options: buildFallbackOptions(thirdAnswer, keywords),
+      questionTextFr: frSentences[0]
+        ? `Quelle idée comprend-on de ce passage : "${frSentences[0].slice(0, 44)}..." ?`
+        : `Quelle est l'idée principale de ce document ?`,
+      questionTextEn: frSentences[0]
+        ? `What idea do you get from this passage: "${frSentences[0].slice(0, 44)}..."?`
+        : `What is the main idea of this document?`,
+      questionTextDarija: frSentences[0]
+        ? `شنو الفكرة اللي كتفهم من هاد الجزء: "${frSentences[0].slice(0, 44)}..."؟`
+        : `شنو الفكرة الرئيسية فهاد الوثيقة؟`,
+      correctAnswerFr: thirdFrAnswer,
+      correctAnswerEn: thirdFrAnswer,
+      correctAnswerDarija: thirdDarijaAnswer,
+      optionsFr: buildFallbackOptions(thirdFrAnswer, frKeywords, frFallbacks),
+      optionsEn: buildFallbackOptions(thirdFrAnswer, frKeywords, enFallbacks),
+      optionsDarija: buildFallbackOptions(thirdDarijaAnswer, darijaKeywords, darijaFallbacks),
+      correctAnswer: thirdDarijaAnswer,
+      options: buildFallbackOptions(thirdDarijaAnswer, darijaKeywords, darijaFallbacks),
       xpReward: 30,
     },
   ];
@@ -124,21 +163,45 @@ const generateQuestionsFromText = (text) => {
 const buildDefaultQuiz = () => [
   {
     _id: 'q1',
+    questionTextFr: "Que fait l'intelligence artificielle dans ce texte ?",
+    questionTextEn: 'What does artificial intelligence do in this text?',
     questionTextDarija: 'الذكاء الاصطناعي كيعاون على شنو فهاد النص؟',
+    correctAnswerFr: "Analyser des données",
+    correctAnswerEn: 'Analyse data',
+    correctAnswerDarija: 'تحليل البيانات',
+    optionsFr: ["Analyser des données", "Jouer à l'école", "Dormir beaucoup"],
+    optionsEn: ['Analyse data', 'Play at school', 'Sleep a lot'],
+    optionsDarija: ['تحليل البيانات', 'اللعب فالمدرسة', 'النوم الكثير'],
     correctAnswer: 'تحليل البيانات',
     options: ['تحليل البيانات', 'اللعب فالمدرسة', 'النوم الكثير'],
     xpReward: 20,
   },
   {
     _id: 'q2',
+    questionTextFr: "Quel est le résultat de l'utilisation de l'IA ?",
+    questionTextEn: 'What is the result of using AI?',
     questionTextDarija: 'شنو النتيجة ديال استعمال الذكاء الاصطناعي هنا؟',
+    correctAnswerFr: 'De meilleures décisions',
+    correctAnswerEn: 'Better decisions',
+    correctAnswerDarija: 'قرارات احسن',
+    optionsFr: ['Perte de temps', 'De meilleures décisions', 'Oublier les cours'],
+    optionsEn: ['Waste of time', 'Better decisions', 'Forgetting lessons'],
+    optionsDarija: ['ضياع الوقت', 'قرارات احسن', 'نسيان الدروس'],
     correctAnswer: 'قرارات احسن',
     options: ['ضياع الوقت', 'قرارات احسن', 'نسيان الدروس'],
     xpReward: 20,
   },
   {
     _id: 'q3',
+    questionTextFr: 'Ce document est-il utile pour apprendre ?',
+    questionTextEn: 'Is this document useful for learning?',
     questionTextDarija: 'واش هاد النص مفيد للتعلم؟',
+    correctAnswerFr: 'Oui, il contient des informations',
+    correctAnswerEn: 'Yes, it contains information',
+    correctAnswerDarija: 'نعم، فيه معلومات',
+    optionsFr: ['Non, juste du divertissement', 'Oui, il contient des informations', 'Je ne sais pas'],
+    optionsEn: ["No, it's just entertainment", 'Yes, it contains information', "I don't know"],
+    optionsDarija: ['لا، غير تفلية', 'نعم، فيه معلومات', 'ما عرفتش'],
     correctAnswer: 'نعم، فيه معلومات',
     options: ['لا، غير تفلية', 'نعم، فيه معلومات', 'ما عرفتش'],
     xpReward: 30,
@@ -253,8 +316,100 @@ const createDemoData = () => {
     createdAt: now,
   };
 
-  text1.generatedQuestions = generateQuestionsFromText(text1);
-  text2.generatedQuestions = generateQuestionsFromText(text2);
+  text1.generatedQuestions = [
+    {
+      _id: 'text_1_q1',
+      questionTextFr: "Sur quoi l'intelligence artificielle a-t-elle le plus grand impact selon ce texte ?",
+      questionTextEn: 'What does artificial intelligence have the greatest impact on according to this text?',
+      questionTextDarija: 'علاش الذكاء الاصطناعي مهم فهاد النص؟',
+      correctAnswerFr: "La façon d'apprendre",
+      correctAnswerEn: 'The way we learn',
+      correctAnswerDarija: 'طريقة التعلم',
+      optionsFr: ["La façon d'apprendre", 'La cuisine', 'Les transports'],
+      optionsEn: ['The way we learn', 'Cooking', 'Transportation'],
+      optionsDarija: ['طريقة التعلم', 'الطبخ', 'السفر'],
+      correctAnswer: 'طريقة التعلم',
+      options: ['طريقة التعلم', 'الطبخ', 'السفر'],
+      xpReward: 20,
+    },
+    {
+      _id: 'text_1_q2',
+      questionTextFr: "Que permet d'analyser l'intelligence artificielle d'après ce texte ?",
+      questionTextEn: 'What does AI help to analyse according to this text?',
+      questionTextDarija: 'شنو كيحلل الذكاء الاصطناعي فهاد النص؟',
+      correctAnswerFr: 'Des données',
+      correctAnswerEn: 'Data',
+      correctAnswerDarija: 'البيانات',
+      optionsFr: ['Des données', 'Des images', 'De la musique'],
+      optionsEn: ['Data', 'Images', 'Music'],
+      optionsDarija: ['البيانات', 'الصور', 'الموسيقى'],
+      correctAnswer: 'البيانات',
+      options: ['البيانات', 'الصور', 'الموسيقى'],
+      xpReward: 20,
+    },
+    {
+      _id: 'text_1_q3',
+      questionTextFr: "Quel est l'objectif de l'utilisation de l'intelligence artificielle ?",
+      questionTextEn: 'What is the goal of using artificial intelligence?',
+      questionTextDarija: 'شنو هو الهدف من استعمال الذكاء الاصطناعي؟',
+      correctAnswerFr: 'Prendre de meilleures décisions',
+      correctAnswerEn: 'Make better decisions',
+      correctAnswerDarija: 'قرارات احسن',
+      optionsFr: ['Prendre de meilleures décisions', 'Perdre du temps', 'Créer de la confusion'],
+      optionsEn: ['Make better decisions', 'Waste time', 'Create confusion'],
+      optionsDarija: ['قرارات احسن', 'نضيعو الوقت', 'نخلقو لبلبلة'],
+      correctAnswer: 'قرارات احسن',
+      options: ['قرارات احسن', 'نضيعو الوقت', 'نخلقو لبلبلة'],
+      xpReward: 30,
+    },
+  ];
+  text2.generatedQuestions = [
+    {
+      _id: 'text_2_q1',
+      questionTextFr: 'Où se situe le Maroc géographiquement ?',
+      questionTextEn: 'Where is Morocco located geographically?',
+      questionTextDarija: 'فين كاين لمغرب جغرافيا؟',
+      correctAnswerFr: "Nord-ouest de l'Afrique",
+      correctAnswerEn: 'Northwest Africa',
+      correctAnswerDarija: 'شمال غرب افريقيا',
+      optionsFr: ["Nord-ouest de l'Afrique", "Asie centrale", "Amérique du Sud"],
+      optionsEn: ['Northwest Africa', 'Central Asia', 'South America'],
+      optionsDarija: ['شمال غرب افريقيا', 'وسط آسيا', 'امريكا الجنوبية'],
+      correctAnswer: 'شمال غرب افريقيا',
+      options: ['شمال غرب افريقيا', 'وسط آسيا', 'امريكا الجنوبية'],
+      xpReward: 20,
+    },
+    {
+      _id: 'text_2_q2',
+      questionTextFr: "Comment l'histoire du Maroc est-elle décrite dans ce texte ?",
+      questionTextEn: "How is Morocco's history described in this text?",
+      questionTextDarija: 'كيفاش كيوصف النص تاريخ لمغرب؟',
+      correctAnswerFr: 'Riche et diverse',
+      correctAnswerEn: 'Rich and diverse',
+      correctAnswerDarija: 'غني ومتنوع',
+      optionsFr: ['Riche et diverse', 'Courte et simple', 'Inconnue et mystérieuse'],
+      optionsEn: ['Rich and diverse', 'Short and simple', 'Unknown and mysterious'],
+      optionsDarija: ['غني ومتنوع', 'قصير وبسيط', 'مجهول وغامض'],
+      correctAnswer: 'غني ومتنوع',
+      options: ['غني ومتنوع', 'قصير وبسيط', 'مجهول وغامض'],
+      xpReward: 20,
+    },
+    {
+      _id: 'text_2_q3',
+      questionTextFr: 'Sur quel continent se trouve le Maroc ?',
+      questionTextEn: 'On which continent is Morocco located?',
+      questionTextDarija: 'فأي قارة كاين لمغرب؟',
+      correctAnswerFr: "L'Afrique",
+      correctAnswerEn: 'Africa',
+      correctAnswerDarija: 'افريقيا',
+      optionsFr: ["L'Afrique", "L'Europe", "L'Asie"],
+      optionsEn: ['Africa', 'Europe', 'Asia'],
+      optionsDarija: ['افريقيا', 'اوروبا', 'آسيا'],
+      correctAnswer: 'افريقيا',
+      options: ['افريقيا', 'اوروبا', 'آسيا'],
+      xpReward: 30,
+    },
+  ];
 
   return {
     users: [
@@ -312,9 +467,15 @@ const mergeDemoData = (db) => {
   }
 
   for (const demoText of demoTexts) {
-    const exists = db.texts.some((text) => text._id === demoText._id);
-    if (!exists) {
+    const existingIndex = db.texts.findIndex((text) => text._id === demoText._id);
+    if (existingIndex === -1) {
       db.texts.push(demoText);
+    } else {
+      // Always refresh seeded questions for demo texts so improvements are picked up
+      db.texts[existingIndex] = {
+        ...db.texts[existingIndex],
+        generatedQuestions: demoText.generatedQuestions,
+      };
     }
   }
 

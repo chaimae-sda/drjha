@@ -1,6 +1,8 @@
 import { aiService } from './aiService';
 
-const OCR_LANGUAGES = 'fra+ara+eng';
+const MISTRAL_API_KEY = import.meta.env.VITE_MISTRAL_API_KEY;
+const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions';
+const MISTRAL_MODEL = 'pixtral-large-latest';
 
 const normalizeText = (text) =>
   text
@@ -22,25 +24,12 @@ const buildTitle = (text) => {
   return firstLine.length > 60 ? `${firstLine.slice(0, 57)}...` : firstLine;
 };
 
-let tesseractModulePromise;
 let pdfModulePromise;
-
-const loadTesseract = async () => {
-  if (!tesseractModulePromise) {
-    tesseractModulePromise = import('tesseract.js');
-  }
-
-  const module = await tesseractModulePromise;
-  return module.default;
-};
 
 const loadPdfJs = async () => {
   if (!pdfModulePromise) {
-    pdfModulePromise = Promise.all([
-      import('pdfjs-dist'),
-      import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
-    ]).then(([pdfjsLib, workerModule]) => {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerModule.default;
+    pdfModulePromise = import('pdfjs-dist').then((pdfjsLib) => {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
       return pdfjsLib;
     });
   }
@@ -48,13 +37,54 @@ const loadPdfJs = async () => {
   return pdfModulePromise;
 };
 
-const recognizeImage = async (imageSource) => {
-  const Tesseract = await loadTesseract();
-  const result = await Tesseract.recognize(imageSource, OCR_LANGUAGES, {
-    logger: () => {},
+const recognizeImageWithMistral = async (base64Image, mimeType = 'image/jpeg') => {
+  if (!MISTRAL_API_KEY) {
+    throw new Error('Clé API Mistral manquante (VITE_MISTRAL_API_KEY not configured).');
+  }
+
+  const response = await fetch(MISTRAL_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${MISTRAL_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: MISTRAL_MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: { url: `data:${mimeType};base64,${base64Image}` },
+            },
+            {
+              type: 'text',
+              text: 'Extrais tout le texte présent dans cette image. Retourne uniquement le texte extrait, sans aucun commentaire ni formatage supplémentaire.',
+            },
+          ],
+        },
+      ],
+    }),
   });
 
-  return normalizeText(result.data.text || '');
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Mistral API error ${response.status}: ${err}`);
+  }
+
+  const data = await response.json();
+  return normalizeText(data.choices?.[0]?.message?.content || '');
+};
+
+const recognizeImage = async (imageSource, mimeType = 'image/jpeg') => {
+  // imageSource may be a data-URL (from PDF canvas rendering) or a plain base64 string
+  if (typeof imageSource === 'string' && imageSource.startsWith('data:')) {
+    const [header, b64] = imageSource.split(',');
+    return recognizeImageWithMistral(b64, header.split(':')[1].split(';')[0]);
+  }
+
+  return recognizeImageWithMistral(imageSource, mimeType);
 };
 
 const translateToDarija = async (text) => {
@@ -95,8 +125,7 @@ const renderPdfPageToImage = async (page) => {
 export const ocrService = {
   scanImage: async (base64Image, mimeType = 'image/jpeg') => {
     try {
-      const imageUrl = `data:${mimeType};base64,${base64Image}`;
-      const originalText = await recognizeImage(imageUrl);
+      const originalText = await recognizeImage(base64Image, mimeType);
 
       if (!originalText) {
         throw new Error('Aucun texte detecte dans cette image.');

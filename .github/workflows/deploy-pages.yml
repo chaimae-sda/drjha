@@ -35,7 +35,7 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           VITE_MISTRAL_API_KEY: ${{ secrets.VITE_MISTRAL_API_KEY }}
-          VITE_GOOGLE_API_KEY: ${{ secrets.VITE_GOOGLE_API_KEY }}
+          VITE_HF_API_KEY: ${{ secrets.VITE_HF_API_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

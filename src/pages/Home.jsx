@@ -98,7 +98,7 @@ const Home = ({
       )}
 
       <div className="home-hero">
-        <img src={assetUrl('drjha_logo.svg')} alt="Darija Knowledge AI" className="home-hero__logo home-hero__logo--blend" decoding="async" />
+        <img src={assetUrl('logo-violet.png')} alt="Darija Knowledge AI" className="home-hero__logo" decoding="async" />
       </div>
 
       <div className="home-illustration-card">

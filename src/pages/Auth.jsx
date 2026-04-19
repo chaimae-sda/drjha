@@ -96,7 +96,7 @@ const Auth = () => {
               </button>
             </div>
           </div>
-          <img src={assetUrl('drjha_logo.svg')} alt="drjha" className="auth-showcase__logo" decoding="async" />
+          <img src={assetUrl('logo-auth-white.png')} alt="Darija Knowledge AI" className="auth-showcase__logo" decoding="async" />
           <h1>{language === 'darija' ? 'درجها' : 'drjha'}</h1>
           <p className="auth-showcase__text">
             {t('auth.showcaseText')}
@@ -157,7 +157,7 @@ const Auth = () => {
                   name="password"
                   value={formData.password}
                   onChange={handleChange}
-                  placeholder="password"
+                  placeholder={t('auth.password')}
                   required
                 />
                 <button type="button" className="field__toggle" onClick={() => setShowPassword((value) => !value)}>

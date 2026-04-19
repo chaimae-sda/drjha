@@ -5,6 +5,15 @@ import { useI18n } from '../context/I18nContext';
 import { apiClient } from '../services/apiService';
 
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
+const PATH_POINTS = [
+  { top: '84%', left: '48%' },
+  { top: '72%', left: '28%' },
+  { top: '61%', left: '58%' },
+  { top: '49%', left: '35%' },
+  { top: '38%', left: '61%' },
+  { top: '26%', left: '30%' },
+  { top: '15%', left: '49%' },
+];
 
 const XP_PER_LEVEL = 500;
 
@@ -14,12 +23,6 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
   const [journeyData, setJourneyData] = useState(null);
   const [texts, setTexts] = useState([]);
   const [showNoQuestionsPrompt, setShowNoQuestionsPrompt] = useState(false);
-  const nodes = t('journey.nodes').map((label, index) => ({
-    id: index + 1,
-    label,
-    top: ['12%', '24%', '34%', '44%', '54%', '63%', '72%', '82%'][index] ?? `${12 + index * 10}%`,
-    left: ['48%', '24%', '56%', '24%', '56%', '24%', '56%', '48%'][index] ?? '48%',
-  }));
 
   useEffect(() => {
     const loadData = async () => {
@@ -59,11 +62,24 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
     return <div className="page-feedback">{t('journey.loading')}</div>;
   }
 
-  const currentLevel = journeyData.currentLevel;
-  const isMaxLevel = currentLevel >= nodes.length;
-  const xpProgress = journeyData.xpProgress || 0;
-  const progressPercent = isMaxLevel ? 100 : Math.min(100, (xpProgress / XP_PER_LEVEL) * 100);
-  const xpToNext = isMaxLevel ? 0 : XP_PER_LEVEL - xpProgress;
+  const nodeLabels = t('journey.nodes');
+  const currentLevel = journeyData.currentLevel || 1;
+  const firstVisibleLevel = Math.max(1, currentLevel - 2);
+  const visibleNodes = PATH_POINTS.map((point, index) => {
+    const absoluteLevel = firstVisibleLevel + index;
+    const label = nodeLabels[(absoluteLevel - 1) % nodeLabels.length];
+
+    return {
+      ...point,
+      id: absoluteLevel,
+      label,
+      isComplete: absoluteLevel < currentLevel,
+      isCurrent: absoluteLevel === currentLevel,
+      isUnlocked: absoluteLevel <= currentLevel,
+    };
+  });
+  const levelProgress = Math.min(((journeyData.xpProgress || 0) / XP_PER_LEVEL) * 100, 100);
+  const xpToNextLevel = Math.max(0, (journeyData.nextLevelXp || currentLevel * XP_PER_LEVEL) - (user?.xp || 0));
 
   return (
     <section className="journey-screen">
@@ -91,39 +107,32 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
         </div>
       </div>
 
-      <div className="journey-xp-bar">
-        <div className="journey-xp-bar__track">
-          <div className="journey-xp-bar__fill" style={{ width: `${progressPercent}%` }} />
+      <div className="journey-progress-card">
+        <div className="journey-progress-card__track">
+          <span className="journey-progress-card__fill" style={{ width: `${levelProgress}%` }} />
         </div>
-        <span className="journey-xp-bar__label">
-          {isMaxLevel
-            ? t('journey.maxLevel')
-            : t('journey.xpToNextLevel', { xp: xpToNext })}
-        </span>
+        <div className="journey-progress-card__meta">
+          <strong>Level {currentLevel}</strong>
+          <span>{xpToNextLevel} XP pour la suite</span>
+        </div>
       </div>
 
       <div className="journey-map">
         <img src={assetUrl('journey_map.png')} alt={t('journey.mapAlt')} className="journey-map__image" />
-        {nodes.map((node, index) => {
-          const isComplete = index + 1 < currentLevel;
-          const isCurrent = index + 1 === currentLevel;
-          const isUnlocked = isComplete || isCurrent;
+        {visibleNodes.map((node) => (
+          <button
+            key={node.id}
+            type="button"
+            className={`journey-node ${node.isComplete ? 'is-complete' : ''} ${node.isCurrent ? 'is-current' : ''} ${!node.isUnlocked ? 'is-locked' : ''}`}
+            style={{ top: node.top, left: node.left }}
+            onClick={() => handleNodeClick(node.id, node.isUnlocked)}
+          >
+            <span className="journey-node__bubble">{node.isUnlocked ? node.id : '🔒'}</span>
+            <span className="journey-node__label">{node.label}</span>
+          </button>
+        ))}
 
-          return (
-            <button
-              key={node.id}
-              type="button"
-              className={`journey-node ${isComplete ? 'is-complete' : ''} ${isCurrent ? 'is-current' : ''} ${!isUnlocked ? 'is-locked' : ''}`}
-              style={{ top: node.top, left: node.left }}
-              onClick={() => handleNodeClick(node.id, isUnlocked)}
-            >
-              <span className="journey-node__bubble">{isUnlocked ? node.id : '🔒'}</span>
-              <span className="journey-node__label">{node.label}</span>
-            </button>
-          );
-        })}
-
-        <div className="journey-treasure">🎁</div>
+        <div className="journey-treasure">✨</div>
       </div>
 
       {showNoQuestionsPrompt && (
@@ -171,4 +180,3 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
 };
 
 export default Journey;
-

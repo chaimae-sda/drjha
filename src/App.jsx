@@ -1,18 +1,17 @@
-import React, { Suspense, lazy, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import Auth from './pages/Auth';
 import BottomNav from './components/BottomNav';
 import { AuthContext, AuthProvider } from './context/AuthContext';
 import { useI18n } from './context/I18nContext';
 import { importDocument } from './services/documentImportService';
-
-const Home = lazy(() => import('./pages/Home'));
-const Journey = lazy(() => import('./pages/Journey'));
-const Library = lazy(() => import('./pages/Library'));
-const Profile = lazy(() => import('./pages/Profile'));
-const Quiz = lazy(() => import('./pages/Quiz'));
-const Reading = lazy(() => import('./pages/Reading'));
-const Scan = lazy(() => import('./pages/Scan'));
+import Home from './pages/Home';
+import Journey from './pages/Journey';
+import Library from './pages/Library';
+import Profile from './pages/Profile';
+import Quiz from './pages/Quiz';
+import Reading from './pages/Reading';
+import Scan from './pages/Scan';
 
 const NOTIFICATIONS_KEY = 'darija.notifications';
 
@@ -32,6 +31,9 @@ const persistNotifications = (notifications) => {
 const AppContent = () => {
   const { user, loading } = useContext(AuthContext);
   const { t, language } = useI18n();
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false,
+  );
   const [activeTab, setActiveTab] = useState('home');
   const [currentView, setCurrentView] = useState({ type: 'tab', id: 'home' });
   const [notifications, setNotifications] = useState(() => readNotifications());
@@ -45,6 +47,19 @@ const AppContent = () => {
   useEffect(() => {
     persistNotifications(notifications);
   }, [notifications]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 768px)');
+    const handleChange = (event) => setIsMobile(event.matches);
+
+    mediaQuery.addEventListener('change', handleChange);
+
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
 
   const unreadNotifications = useMemo(
     () => notifications.filter((item) => !item.read).length,
@@ -214,18 +229,10 @@ const AppContent = () => {
   };
 
   return (
-    <div className="app-shell">
-      <div className="app-phone-frame">
+    <div className={`app-shell ${isMobile ? 'app-shell--mobile' : 'app-shell--desktop'}`}>
+      <div className={`app-phone-frame ${isMobile ? 'app-phone-frame--mobile' : 'app-phone-frame--desktop'}`}>
         <main className="app-screen with-nav">
-          <Suspense
-            fallback={
-              <div className="page-feedback">
-                {t('common.loading')}
-              </div>
-            }
-          >
-            {renderCurrentView()}
-          </Suspense>
+          {renderCurrentView()}
         </main>
         <BottomNav
           activeTab={activeTab}

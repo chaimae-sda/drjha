@@ -10,16 +10,6 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const restoreSession = async () => {
-      apiClient.clearLegacyStorage();
-
-      if (import.meta.env.DEV) {
-        apiClient.logout();
-        setUser(null);
-        setToken(null);
-        setLoading(false);
-        return;
-      }
-
       const storedUser = apiClient.getStoredUser();
       const storedToken = apiClient.getToken();
 
@@ -27,10 +17,32 @@ export const AuthProvider = ({ children }) => {
         setUser(storedUser);
         setToken(storedToken);
         setLoading(false);
+
+        try {
+          const session = await apiClient.restoreSession();
+          if (session?.user) {
+            setUser(session.user);
+            setToken(session.token || storedToken);
+          }
+        } catch {
+          apiClient.logout();
+          setUser(null);
+          setToken(null);
+        }
+      } else {
+        try {
+          const session = await apiClient.restoreSession();
+          setUser(session?.user || null);
+          setToken(session?.token || null);
+        } catch {
+          setUser(null);
+          setToken(null);
+        } finally {
+          setLoading(false);
+        }
+
         return;
       }
-
-      setLoading(false);
     };
 
     restoreSession();

@@ -1,18 +1,23 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL || 'https://pagfnzzrzwwbwyljlovo.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  'sb_publishable_KBwGs_g-cjNAJnnfSY-ZMw_MpCmZkTH';
 
 const USER_SYNC_EVENT = 'darija:user-updated';
 const XP_PER_LEVEL = 500;
 const STORAGE_KEYS = {
-  user: 'darija.mock.user',
+  user: 'darija.session.user',
+  accessToken: 'darija.session.access_token',
+  refreshToken: 'darija.session.refresh_token',
   users: 'darija.mock.users',
   texts: 'darija.mock.texts',
-  token: 'authToken',
 };
 
-const LEVEL_DEFS = [
+const STAGE_DEFS = [
   { id: 1, name: 'Decouverte' },
   { id: 2, name: 'Apprenti' },
-  { id: 3, name: 'Explorateur' },
+  { id: 3, name: 'Curieux' },
   { id: 4, name: 'Savant' },
   { id: 5, name: 'Maitre' },
 ];
@@ -33,9 +38,6 @@ const XP_RULES = {
   repeatRead: 2,
   audioSession: 8,
 };
-
-const getLevelFromXp = (xp = 0) => Math.min(Math.floor(xp / XP_PER_LEVEL) + 1, LEVEL_DEFS.length);
-const getLevelName = (level = 1) => LEVEL_DEFS[Math.max(0, Math.min(level, LEVEL_DEFS.length) - 1)]?.name || LEVEL_DEFS[0].name;
 
 const safeJsonParse = (value, fallback) => {
   try {
@@ -75,8 +77,8 @@ const buildFallbackOptions = (answer, keywords = [], fallbacks = ['معلومة 
 };
 
 const generateQuestionsFromText = (text) => {
-  const originalText = text?.originalText?.trim() || '';
-  const darijaText = text?.darijaText?.trim() || '';
+  const originalText = text?.originalText?.trim() || text?.original_text?.trim() || '';
+  const darijaText = text?.darijaText?.trim() || text?.darija_text?.trim() || '';
   const title = text?.title?.trim() || 'هاد الوثيقة';
   const sourceText = `${originalText} ${darijaText}`.trim();
 
@@ -227,20 +229,25 @@ const normalizeStats = (stats = {}) => ({
   completedTextIds: Array.isArray(stats.completedTextIds) ? stats.completedTextIds : [],
 });
 
+const getLevelFromXp = (xp = 0) => Math.max(1, Math.floor(xp / XP_PER_LEVEL) + 1);
+const getStageIndex = (level = 1) => (Math.max(level, 1) - 1) % STAGE_DEFS.length;
+const getLoopCount = (level = 1) => Math.floor((Math.max(level, 1) - 1) / STAGE_DEFS.length);
+const getLevelName = (level = 1) => STAGE_DEFS[getStageIndex(level)]?.name || STAGE_DEFS[0].name;
+
 const normalizeUser = (user) => {
   const xp = user?.xp || 0;
   const level = user?.level || getLevelFromXp(xp);
 
   return {
     id: user.id || user._id,
-    username: user.username,
+    username: user.username || user.user_metadata?.username || user.email?.split('@')[0] || 'Learner',
     email: user.email,
     avatar: user.avatar || '👧',
-    avatarImage: user.avatarImage || '',
+    avatarImage: user.avatarImage || user.avatar_image || '',
     level,
-    levelName: user.levelName || getLevelName(level),
+    levelName: user.levelName || user.level_name || getLevelName(level),
     xp,
-    booksRead: user.booksRead || 0,
+    booksRead: user.booksRead || user.books_read || 0,
     badges: Array.isArray(user.badges) ? user.badges : [],
     stats: normalizeStats(user.stats),
   };
@@ -516,17 +523,8 @@ const loadMockDb = () => {
         : generateQuestionsFromText(text),
   }));
 
-  if (!localStorage.getItem(STORAGE_KEYS.users)) {
-    localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
-  } else {
-    localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
-  }
-
-  if (!localStorage.getItem(STORAGE_KEYS.texts)) {
-    localStorage.setItem(STORAGE_KEYS.texts, JSON.stringify(texts));
-  } else {
-    localStorage.setItem(STORAGE_KEYS.texts, JSON.stringify(texts));
-  }
+  localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
+  localStorage.setItem(STORAGE_KEYS.texts, JSON.stringify(texts));
 
   return { users, texts };
 };
@@ -538,17 +536,35 @@ const saveMockDb = (db) => {
 
 const getStoredSessionUser = () => safeJsonParse(sessionStorage.getItem(STORAGE_KEYS.user), null);
 
+const persistSessionTokens = ({ accessToken, refreshToken }) => {
+  if (accessToken) {
+    localStorage.setItem(STORAGE_KEYS.accessToken, accessToken);
+  }
+
+  if (refreshToken) {
+    localStorage.setItem(STORAGE_KEYS.refreshToken, refreshToken);
+  }
+};
+
 const persistSessionUser = (user) => {
   sessionStorage.setItem(STORAGE_KEYS.user, JSON.stringify(user));
   emitUserSync(user);
 };
 
-const clearSessionUser = () => {
+const persistSession = ({ accessToken, refreshToken, user }) => {
+  persistSessionTokens({ accessToken, refreshToken });
+  persistSessionUser(user);
+};
+
+const clearSession = () => {
   sessionStorage.removeItem(STORAGE_KEYS.user);
   localStorage.removeItem(STORAGE_KEYS.user);
+  localStorage.removeItem(STORAGE_KEYS.accessToken);
+  localStorage.removeItem(STORAGE_KEYS.refreshToken);
   emitUserSync(null);
 };
 
+const getAccessToken = () => localStorage.getItem(STORAGE_KEYS.accessToken);
 const getCurrentUserId = () => getStoredSessionUser()?.id;
 const getUserTexts = (db, userId = getCurrentUserId()) => db.texts.filter((item) => item.ownerId === userId);
 
@@ -561,21 +577,230 @@ const syncUserInDb = (db, updatedUser) => {
 
 const buildJourney = (user) => {
   const currentLevel = getLevelFromXp(user.xp || 0);
+  const stageIndex = getStageIndex(currentLevel);
 
   return {
     currentLevel,
+    stageIndex,
     levelName: getLevelName(currentLevel),
     totalXp: user.xp || 0,
-    levels: LEVEL_DEFS.map((level, index) => ({
-      ...level,
-      isUnlocked: index < currentLevel,
-      isCurrentLevel: index + 1 === currentLevel,
-      xpRequired: index * XP_PER_LEVEL,
-      xpToNext: (index + 1) * XP_PER_LEVEL,
-    })),
-    nextLevelXp: Math.min(currentLevel + 1, LEVEL_DEFS.length) * XP_PER_LEVEL,
+    nextLevelXp: currentLevel * XP_PER_LEVEL,
+    currentLevelBaseXp: (currentLevel - 1) * XP_PER_LEVEL,
     xpProgress: (user.xp || 0) % XP_PER_LEVEL,
+    loopCount: getLoopCount(currentLevel),
+    stages: STAGE_DEFS.map((stage, index) => ({
+      ...stage,
+      isCurrentStage: index === stageIndex,
+    })),
   };
+};
+
+const buildProfilePayload = (user) => ({
+  id: user.id,
+  email: user.email,
+  username: user.username,
+  avatar: user.avatar || '👧',
+  avatar_image: user.avatarImage || '',
+  level: user.level,
+  level_name: user.levelName,
+  xp: user.xp,
+  books_read: user.booksRead,
+  badges: user.badges || [],
+  stats: {
+    readingTime: user.stats?.readingTime || 0,
+    quizzesPassed: user.stats?.quizzesPassed || 0,
+    bestStreak: user.stats?.bestStreak || 0,
+    pagesRead: user.stats?.pagesRead || 0,
+    importedCount: user.stats?.importedCount || 0,
+    scannedCount: user.stats?.scannedCount || 0,
+    perfectQuizzes: user.stats?.perfectQuizzes || 0,
+    audioSessions: user.stats?.audioSessions || 0,
+  },
+  updated_at: new Date().toISOString(),
+});
+
+const normalizeProfileRecord = (profile, authUser = null) =>
+  normalizeUser({
+    id: profile?.id || authUser?.id,
+    username: profile?.username || authUser?.user_metadata?.username || authUser?.email?.split('@')[0],
+    email: profile?.email || authUser?.email,
+    avatar: profile?.avatar || '👧',
+    avatarImage: profile?.avatar_image || '',
+    level: profile?.level || getLevelFromXp(profile?.xp || 0),
+    levelName: profile?.level_name || getLevelName(profile?.level || getLevelFromXp(profile?.xp || 0)),
+    xp: profile?.xp || 0,
+    booksRead: profile?.books_read || 0,
+    badges: profile?.badges || [],
+    stats: profile?.stats || {},
+  });
+
+const normalizeTextRecord = (record) => ({
+  _id: record.id,
+  ownerId: record.owner_id,
+  title: record.title,
+  originalText: record.original_text,
+  darijaText: record.darija_text,
+  language: record.language || 'fr',
+  source: record.source || 'upload',
+  fileName: record.file_name || '',
+  mimeType: record.mime_type || '',
+  generatedQuestions:
+    Array.isArray(record.generated_questions) && record.generated_questions.length > 0
+      ? record.generated_questions
+      : generateQuestionsFromText(record),
+  readCount: record.read_count || 0,
+  isFavorite: Boolean(record.is_favorite),
+  createdAt: record.created_at || new Date().toISOString(),
+});
+
+const parseErrorMessage = async (response) => {
+  const contentType = response.headers.get('content-type') || '';
+  const body = contentType.includes('application/json') ? await response.json() : await response.text();
+
+  if (typeof body === 'string') {
+    return body;
+  }
+
+  return body?.msg || body?.error_description || body?.message || body?.error || 'Request failed';
+};
+
+const authHeaders = (token) => ({
+  apikey: SUPABASE_PUBLISHABLE_KEY,
+  Authorization: `Bearer ${token}`,
+  'Content-Type': 'application/json',
+});
+
+const publicHeaders = () => ({
+  apikey: SUPABASE_PUBLISHABLE_KEY,
+  'Content-Type': 'application/json',
+});
+
+const fetchJson = async (url, options = {}) => {
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    throw new Error(await parseErrorMessage(response));
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    return response.text();
+  }
+
+  return response.json();
+};
+
+const isSupabaseConfigured = () => Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+
+const supabaseAuthRequest = async (path, options) =>
+  fetchJson(`${SUPABASE_URL}/auth/v1${path}`, {
+    ...options,
+    headers: {
+      ...publicHeaders(),
+      ...(options?.headers || {}),
+    },
+  });
+
+const supabaseRestRequest = async (path, { method = 'GET', body, token = getAccessToken(), prefer } = {}) =>
+  fetchJson(`${SUPABASE_URL}/rest/v1${path}`, {
+    method,
+    headers: {
+      ...authHeaders(token),
+      ...(prefer ? { Prefer: prefer } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+const ensureSupabaseProfile = async (authUser, overrides = {}) => {
+  const initialUser = normalizeUser({
+    id: authUser.id,
+    email: authUser.email,
+    username: overrides.username || authUser.user_metadata?.username || authUser.email?.split('@')[0],
+    avatarImage: overrides.avatarImage || '',
+    xp: overrides.xp || 0,
+    booksRead: overrides.booksRead || 0,
+    badges: overrides.badges || [],
+    stats:
+      overrides.stats || {
+        readingTime: 0,
+        quizzesPassed: 0,
+        bestStreak: 0,
+        pagesRead: 0,
+        importedCount: 0,
+        scannedCount: 0,
+        perfectQuizzes: 0,
+        audioSessions: 0,
+      },
+  });
+
+  const payload = buildProfilePayload(initialUser);
+  const rows = await supabaseRestRequest('/profiles?on_conflict=id&select=*', {
+    method: 'POST',
+    body: payload,
+    prefer: 'resolution=merge-duplicates,return=representation',
+  });
+
+  return normalizeProfileRecord(rows?.[0], authUser);
+};
+
+const getSupabaseProfile = async (authUser = null) => {
+  const userId = authUser?.id || getCurrentUserId();
+  if (!userId) {
+    throw new Error('Unauthorized');
+  }
+
+  const rows = await supabaseRestRequest(`/profiles?id=eq.${userId}&select=*`);
+  if (rows?.[0]) {
+    return normalizeProfileRecord(rows[0], authUser);
+  }
+
+  if (!authUser) {
+    const currentAuthUser = await supabaseAuthRequest('/user', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${getAccessToken()}` },
+    });
+    return ensureSupabaseProfile(currentAuthUser);
+  }
+
+  return ensureSupabaseProfile(authUser);
+};
+
+const getSupabaseTexts = async () => {
+  const userId = getCurrentUserId();
+  if (!userId) {
+    throw new Error('Unauthorized');
+  }
+
+  const rows = await supabaseRestRequest(
+    `/texts?owner_id=eq.${userId}&select=*&order=created_at.desc`,
+  );
+  return (rows || []).map(normalizeTextRecord);
+};
+
+const upsertSupabaseProfile = async (updates) => {
+  const currentUser = await getSupabaseProfile();
+  const mergedUser = normalizeUser({
+    ...currentUser,
+    ...updates,
+    stats: {
+      ...currentUser.stats,
+      ...(updates.stats || {}),
+    },
+  });
+
+  const rows = await supabaseRestRequest('/profiles?on_conflict=id&select=*', {
+    method: 'POST',
+    body: buildProfilePayload(mergedUser),
+    prefer: 'resolution=merge-duplicates,return=representation',
+  });
+
+  const nextUser = normalizeProfileRecord(rows?.[0] || buildProfilePayload(mergedUser));
+  persistSessionUser(nextUser);
+  return { user: nextUser };
 };
 
 const mockHandlers = {
@@ -600,10 +825,13 @@ const mockHandlers = {
 
     db.users.push({ ...newUser, password });
     saveMockDb(db);
-    persistSessionUser(newUser);
-    sessionStorage.setItem(STORAGE_KEYS.token, `mock-token-${newUser.id}`);
+    persistSession({
+      accessToken: `mock-token-${newUser.id}`,
+      refreshToken: `mock-refresh-${newUser.id}`,
+      user: newUser,
+    });
 
-    return { token: sessionStorage.getItem(STORAGE_KEYS.token), user: newUser };
+    return { token: getAccessToken(), user: newUser };
   },
 
   login: async ({ email, password }) => {
@@ -615,9 +843,12 @@ const mockHandlers = {
     }
 
     const user = normalizeUser(found);
-    persistSessionUser(user);
-    sessionStorage.setItem(STORAGE_KEYS.token, `mock-token-${user.id}`);
-    return { token: sessionStorage.getItem(STORAGE_KEYS.token), user };
+    persistSession({
+      accessToken: `mock-token-${user.id}`,
+      refreshToken: `mock-refresh-${user.id}`,
+      user,
+    });
+    return { token: getAccessToken(), user };
   },
 
   getProfile: async () => {
@@ -639,6 +870,10 @@ const mockHandlers = {
     const updatedUser = normalizeUser({
       ...user,
       ...updates,
+      stats: {
+        ...(user.stats || {}),
+        ...(updates.stats || {}),
+      },
     });
 
     persistSessionUser(updatedUser);
@@ -674,13 +909,7 @@ const mockHandlers = {
           stats: {
             ...(user.stats || {}),
             readingTime: (user.stats?.readingTime || 0) + 4,
-            quizzesPassed: user.stats?.quizzesPassed || 0,
-            bestStreak: user.stats?.bestStreak || 0,
             pagesRead: (user.stats?.pagesRead || 0) + estimatePageCount(text.originalText || text.darijaText || ''),
-            importedCount: user.stats?.importedCount || 0,
-            scannedCount: user.stats?.scannedCount || 0,
-            perfectQuizzes: user.stats?.perfectQuizzes || 0,
-            audioSessions: user.stats?.audioSessions || 0,
           },
         },
         getUserTexts(db, user.id),
@@ -728,13 +957,8 @@ const mockHandlers = {
         stats: {
           ...(user.stats || {}),
           bestStreak: Math.max(user.stats?.bestStreak || 0, 1),
-          quizzesPassed: user.stats?.quizzesPassed || 0,
-          readingTime: user.stats?.readingTime || 0,
-          pagesRead: user.stats?.pagesRead || 0,
           importedCount: (user.stats?.importedCount || 0) + (source === 'upload' ? 1 : 0),
           scannedCount: (user.stats?.scannedCount || 0) + (source === 'scan' ? 1 : 0),
-          perfectQuizzes: user.stats?.perfectQuizzes || 0,
-          audioSessions: user.stats?.audioSessions || 0,
         },
       },
       getUserTexts(db, user.id),
@@ -896,13 +1120,6 @@ const mockHandlers = {
         levelName: getLevelName(getLevelFromXp(nextXp)),
         stats: {
           ...(user.stats || {}),
-          readingTime: user.stats?.readingTime || 0,
-          quizzesPassed: user.stats?.quizzesPassed || 0,
-          bestStreak: user.stats?.bestStreak || 0,
-          pagesRead: user.stats?.pagesRead || 0,
-          importedCount: user.stats?.importedCount || 0,
-          scannedCount: user.stats?.scannedCount || 0,
-          perfectQuizzes: user.stats?.perfectQuizzes || 0,
           audioSessions: (user.stats?.audioSessions || 0) + 1,
         },
       },
@@ -927,189 +1144,358 @@ const mockHandlers = {
   }),
 };
 
-const parseResponse = async (res) => {
-  const contentType = res.headers.get('content-type') || '';
-  const data = contentType.includes('application/json') ? await res.json() : await res.text();
-
-  if (!res.ok) {
-    throw new Error(typeof data === 'string' ? data : data?.error || 'Request failed');
+const withFallback = async (primary, fallback) => {
+  try {
+    if (isSupabaseConfigured()) {
+      return await primary();
+    }
+  } catch (error) {
+    if (!fallback) {
+      return { error: error.message || 'Network error' };
+    }
   }
 
-  return data;
+  return fallback ? fallback() : { error: 'Service unavailable' };
 };
 
-const request = async ({ path, method = 'GET', body, fallback }) => {
-  try {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(sessionStorage.getItem(STORAGE_KEYS.token)
-          ? { Authorization: `Bearer ${sessionStorage.getItem(STORAGE_KEYS.token)}` }
-          : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-    });
+const loginWithSupabase = async (email, password) => {
+  const data = await supabaseAuthRequest('/token?grant_type=password', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
 
-    return await parseResponse(res);
-  } catch (error) {
-    if (fallback) {
-      return fallback();
-    }
+  const profile = await ensureSupabaseProfile(data.user, {
+    username: data.user?.user_metadata?.username,
+  });
 
-    return { error: error.message || 'Network error' };
+  persistSession({
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    user: profile,
+  });
+
+  return { token: data.access_token, user: profile };
+};
+
+const registerWithSupabase = async (username, email, password) => {
+  const data = await supabaseAuthRequest('/signup', {
+    method: 'POST',
+    body: JSON.stringify({
+      email,
+      password,
+      data: { username },
+    }),
+  });
+
+  if (!data.access_token) {
+    return loginWithSupabase(email, password);
   }
+
+  const profile = await ensureSupabaseProfile(data.user, { username });
+  persistSession({
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    user: profile,
+  });
+
+  return { token: data.access_token, user: profile };
+};
+
+const restoreSupabaseSession = async () => {
+  const accessToken = getAccessToken();
+  if (!accessToken) {
+    return { user: getStoredSessionUser(), token: null };
+  }
+
+  const authUser = await supabaseAuthRequest('/user', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const profile = await getSupabaseProfile(authUser);
+  persistSessionUser(profile);
+  return { user: profile, token: accessToken };
 };
 
 export const apiClient = {
   USER_SYNC_EVENT,
 
   setToken: (token) => {
-    sessionStorage.setItem(STORAGE_KEYS.token, token);
-    localStorage.removeItem(STORAGE_KEYS.token);
+    persistSessionTokens({ accessToken: token });
   },
 
-  getToken: () => sessionStorage.getItem(STORAGE_KEYS.token),
+  getToken: () => getAccessToken(),
 
   getStoredUser: () => getStoredSessionUser(),
 
-  clearLegacyStorage: () => {
-    localStorage.removeItem(STORAGE_KEYS.user);
-    localStorage.removeItem(STORAGE_KEYS.token);
-  },
+  restoreSession: async () =>
+    withFallback(
+      restoreSupabaseSession,
+      async () => ({ user: getStoredSessionUser(), token: getAccessToken() }),
+    ),
 
   register: async (username, email, password) =>
-    request({
-      path: '/auth/register',
-      method: 'POST',
-      body: { username, email, password },
-      fallback: () => mockHandlers.register({ username, email, password }),
-    }),
+    withFallback(
+      () => registerWithSupabase(username, email, password),
+      () => mockHandlers.register({ username, email, password }),
+    ),
 
   login: async (email, password) =>
-    request({
-      path: '/auth/login',
-      method: 'POST',
-      body: { email, password },
-      fallback: () => mockHandlers.login({ email, password }),
-    }),
+    withFallback(
+      () => loginWithSupabase(email, password),
+      () => mockHandlers.login({ email, password }),
+    ),
 
   loginDemo: async () => mockHandlers.login({ email: 'test@example.com', password: 'password' }),
 
   logout: () => {
-    sessionStorage.removeItem(STORAGE_KEYS.token);
-    localStorage.removeItem(STORAGE_KEYS.token);
-    clearSessionUser();
+    clearSession();
   },
 
   getProfile: async () =>
-    request({
-      path: '/users/profile',
-      fallback: mockHandlers.getProfile,
-    }),
+    withFallback(
+      async () => ({ user: await getSupabaseProfile() }),
+      mockHandlers.getProfile,
+    ),
 
   updateProfile: async (updates) =>
-    request({
-      path: '/users/profile',
-      method: 'PATCH',
-      body: updates,
-      fallback: () => mockHandlers.updateProfile(updates),
-    }),
+    withFallback(
+      () => upsertSupabaseProfile(updates),
+      () => mockHandlers.updateProfile(updates),
+    ),
 
   addXP: async (xpAmount, metadata = {}) =>
-    request({
-      path: '/users/addxp',
-      method: 'POST',
-      body: { xpAmount, ...metadata },
-      fallback: () => mockHandlers.addXP(xpAmount, metadata),
-    }),
+    withFallback(
+      async () => {
+        const user = await getSupabaseProfile();
+        const texts = await getSupabaseTexts();
+        const nextXp = (user.xp || 0) + xpAmount;
+        const updatedUser = applyAchievements(
+          {
+            ...user,
+            xp: nextXp,
+            level: getLevelFromXp(nextXp),
+            levelName: getLevelName(getLevelFromXp(nextXp)),
+            stats: {
+              ...(user.stats || {}),
+              quizzesPassed: (user.stats?.quizzesPassed || 0) + (metadata.quizCompleted ? 1 : 0),
+              bestStreak: Math.max((user.stats?.bestStreak || 0) + 1, 1),
+              perfectQuizzes:
+                (user.stats?.perfectQuizzes || 0) +
+                (metadata.quizCompleted && metadata.totalQuestions > 0 && metadata.correctAnswers === metadata.totalQuestions ? 1 : 0),
+            },
+          },
+          texts,
+        );
 
-  unlockBadge: async (badgeId, badgeName, badgeIcon, badgeColor) =>
-    request({
-      path: '/users/badge',
-      method: 'POST',
-      body: { badgeId, badgeName, badgeIcon, badgeColor },
-      fallback: async () => ({ message: 'Badge unlocked' }),
-    }),
+        await upsertSupabaseProfile(updatedUser);
+
+        return {
+          xp: updatedUser.xp,
+          level: updatedUser.level,
+          levelName: updatedUser.levelName,
+          message: 'XP added successfully',
+        };
+      },
+      () => mockHandlers.addXP(xpAmount, metadata),
+    ),
+
+  unlockBadge: async () => ({ message: 'Badge unlocked' }),
 
   saveText: async (title, originalText, darijaText, language = 'fr', source = 'upload', fileName = '', mimeType = '') =>
-    request({
-      path: '/texts/save',
-      method: 'POST',
-      body: { title, originalText, darijaText, language, source, fileName, mimeType },
-      fallback: () => mockHandlers.saveText({ title, originalText, darijaText, language, source, fileName, mimeType }),
-    }),
+    withFallback(
+      async () => {
+        const user = await getSupabaseProfile();
+        const payload = {
+          owner_id: user.id,
+          title,
+          original_text: originalText,
+          darija_text: darijaText,
+          language,
+          source,
+          file_name: fileName,
+          mime_type: mimeType,
+          generated_questions: generateQuestionsFromText({ title, originalText, darijaText }),
+          read_count: 0,
+          is_favorite: false,
+        };
+
+        const rows = await supabaseRestRequest('/texts?select=*', {
+          method: 'POST',
+          body: payload,
+          prefer: 'return=representation',
+        });
+
+        const texts = [...(await getSupabaseTexts()), normalizeTextRecord(rows?.[0])];
+        const updatedUser = applyAchievements(
+          {
+            ...user,
+            xp: (user.xp || 0) + (source === 'scan' ? XP_RULES.scanDocument : XP_RULES.uploadDocument),
+            level: getLevelFromXp((user.xp || 0) + (source === 'scan' ? XP_RULES.scanDocument : XP_RULES.uploadDocument)),
+            levelName: getLevelName(getLevelFromXp((user.xp || 0) + (source === 'scan' ? XP_RULES.scanDocument : XP_RULES.uploadDocument))),
+            booksRead: (user.booksRead || 0) + 1,
+            stats: {
+              ...(user.stats || {}),
+              bestStreak: Math.max(user.stats?.bestStreak || 0, 1),
+              importedCount: (user.stats?.importedCount || 0) + (source === 'upload' ? 1 : 0),
+              scannedCount: (user.stats?.scannedCount || 0) + (source === 'scan' ? 1 : 0),
+            },
+          },
+          texts,
+        );
+
+        await upsertSupabaseProfile(updatedUser);
+
+        return {
+          message: 'Text saved successfully',
+          text: normalizeTextRecord(rows?.[0]),
+          questionsGenerated: payload.generated_questions.length,
+        };
+      },
+      () => mockHandlers.saveText({ title, originalText, darijaText, language, source, fileName, mimeType }),
+    ),
 
   getTexts: async () =>
-    request({
-      path: '/texts/list',
-      fallback: mockHandlers.getTexts,
-    }),
+    withFallback(
+      getSupabaseTexts,
+      mockHandlers.getTexts,
+    ),
 
   getText: async (textId) =>
-    request({
-      path: `/texts/${textId}`,
-      fallback: () => mockHandlers.getText(textId),
-    }),
+    withFallback(
+      async () => {
+        const rows = await supabaseRestRequest(`/texts?id=eq.${textId}&select=*`);
+        const rawText = rows?.[0];
+        if (!rawText) {
+          return { error: 'Text not found' };
+        }
+
+        const normalizedText = normalizeTextRecord(rawText);
+        const previousReadCount = normalizedText.readCount || 0;
+        const nextReadCount = previousReadCount + 1;
+
+        await supabaseRestRequest(`/texts?id=eq.${textId}&select=*`, {
+          method: 'PATCH',
+          body: { read_count: nextReadCount },
+          prefer: 'return=representation',
+        });
+
+        const user = await getSupabaseProfile();
+        const texts = await getSupabaseTexts();
+        const updatedUser = applyAchievements(
+          {
+            ...user,
+            xp: (user.xp || 0) + (previousReadCount === 0 ? XP_RULES.firstRead : XP_RULES.repeatRead),
+            level: getLevelFromXp((user.xp || 0) + (previousReadCount === 0 ? XP_RULES.firstRead : XP_RULES.repeatRead)),
+            levelName: getLevelName(getLevelFromXp((user.xp || 0) + (previousReadCount === 0 ? XP_RULES.firstRead : XP_RULES.repeatRead))),
+            stats: {
+              ...(user.stats || {}),
+              readingTime: (user.stats?.readingTime || 0) + 4,
+              pagesRead:
+                (user.stats?.pagesRead || 0) +
+                estimatePageCount(normalizedText.originalText || normalizedText.darijaText || ''),
+            },
+          },
+          texts,
+        );
+
+        await upsertSupabaseProfile(updatedUser);
+        return { ...normalizedText, readCount: nextReadCount };
+      },
+      () => mockHandlers.getText(textId),
+    ),
 
   toggleFavorite: async (textId) =>
-    request({
-      path: `/texts/${textId}/favorite`,
-      method: 'POST',
-      fallback: () => mockHandlers.toggleFavorite(textId),
-    }),
+    withFallback(
+      async () => {
+        const rows = await supabaseRestRequest(`/texts?id=eq.${textId}&select=*`);
+        const record = rows?.[0];
+        if (!record) {
+          return { error: 'Text not found' };
+        }
+
+        const nextValue = !record.is_favorite;
+        await supabaseRestRequest(`/texts?id=eq.${textId}&select=*`, {
+          method: 'PATCH',
+          body: { is_favorite: nextValue },
+          prefer: 'return=representation',
+        });
+
+        return { isFavorite: nextValue };
+      },
+      () => mockHandlers.toggleFavorite(textId),
+    ),
 
   deleteText: async (textId) =>
-    request({
-      path: `/texts/${textId}`,
-      method: 'DELETE',
-      fallback: () => mockHandlers.deleteText(textId),
-    }),
+    withFallback(
+      async () => {
+        await supabaseRestRequest(`/texts?id=eq.${textId}`, {
+          method: 'DELETE',
+          prefer: 'return=minimal',
+        });
+        return { success: true };
+      },
+      () => mockHandlers.deleteText(textId),
+    ),
 
-  translateText: async (text) =>
-    request({
-      path: '/texts/translate',
-      method: 'POST',
-      body: { text },
-      fallback: () => mockHandlers.translateText({ text }),
-    }),
+  translateText: async (text) => mockHandlers.translateText({ text }),
 
   performOCR: async (base64Image, mimeType = 'image/jpeg') =>
-    request({
-      path: '/texts/ocr',
-      method: 'POST',
-      body: { image: base64Image, mimeType },
-      fallback: mockHandlers.performOCR,
-    }),
+    mockHandlers.performOCR(base64Image, mimeType),
 
   getQuizQuestions: async (textId) =>
-    request({
-      path: `/quiz/text/${textId}`,
-      fallback: () => mockHandlers.getQuizQuestions(textId),
-    }),
+    withFallback(
+      async () => {
+        const rows = await supabaseRestRequest(`/texts?id=eq.${textId}&select=*`);
+        const record = rows?.[0];
+        if (!record) {
+          return buildDefaultQuiz();
+        }
+
+        const text = normalizeTextRecord(record);
+        return text.generatedQuestions?.length ? text.generatedQuestions : buildDefaultQuiz();
+      },
+      () => mockHandlers.getQuizQuestions(textId),
+    ),
 
   getRandomQuiz: async () => mockHandlers.getQuizQuestions(),
 
-  submitAnswer: async (questionId, userAnswer) =>
-    request({
-      path: '/quiz/submit',
-      method: 'POST',
-      body: { questionId, userAnswer },
-      fallback: mockHandlers.submitAnswer,
-    }),
+  submitAnswer: async (questionId, userAnswer) => mockHandlers.submitAnswer(questionId, userAnswer),
 
   getJourneyProgress: async () =>
-    request({
-      path: '/journey/progress',
-      fallback: mockHandlers.getJourneyProgress,
-    }),
+    withFallback(
+      async () => buildJourney(await getSupabaseProfile()),
+      mockHandlers.getJourneyProgress,
+    ),
 
   completeLevel: async (levelId) =>
-    request({
-      path: `/journey/complete-level/${levelId}`,
-      method: 'POST',
-      fallback: () => mockHandlers.completeLevel(levelId),
-    }),
+    withFallback(
+      async () => apiClient.addXP(200, { levelId }),
+      () => mockHandlers.completeLevel(levelId),
+    ),
 
-  trackAudioSession: async () => mockHandlers.trackAudioSession(),
+  trackAudioSession: async () =>
+    withFallback(
+      async () => {
+        const user = await getSupabaseProfile();
+        const texts = await getSupabaseTexts();
+        const nextXp = (user.xp || 0) + XP_RULES.audioSession;
+        const updatedUser = applyAchievements(
+          {
+            ...user,
+            xp: nextXp,
+            level: getLevelFromXp(nextXp),
+            levelName: getLevelName(getLevelFromXp(nextXp)),
+            stats: {
+              ...(user.stats || {}),
+              audioSessions: (user.stats?.audioSessions || 0) + 1,
+            },
+          },
+          texts,
+        );
+
+        await upsertSupabaseProfile(updatedUser);
+        return { success: true, xp: updatedUser.xp, level: updatedUser.level };
+      },
+      mockHandlers.trackAudioSession,
+    ),
 };

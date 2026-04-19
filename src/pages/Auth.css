@@ -329,7 +329,7 @@
   .auth-showcase {
     align-items: center;
     text-align: center;
-    padding: 34px 24px 18px;
+    padding: 28px 20px 14px;
   }
 
   .auth-showcase__topbar {
@@ -343,7 +343,7 @@
   }
 
   .auth-showcase__image {
-    max-width: 280px;
+    max-width: 240px;
   }
 }
 
@@ -357,7 +357,52 @@
     border-radius: 0;
   }
 
+  .auth-showcase {
+    padding: 24px 16px 10px;
+  }
+
+  .auth-showcase__badge,
+  .auth-theme-toggle,
+  .auth-language-menu__trigger {
+    min-height: 36px;
+  }
+
+  .auth-showcase__logo {
+    width: 88px;
+    margin: 20px 0 14px;
+  }
+
+  .auth-showcase h1 {
+    font-size: 2.3rem;
+  }
+
+  .auth-showcase__brand {
+    font-size: 1rem;
+  }
+
+  .auth-showcase__text {
+    margin: 14px 0 12px;
+    font-size: 0.92rem;
+    line-height: 1.5;
+  }
+
   .auth-card {
-    padding: 28px 18px 36px;
+    padding: 24px 16px 28px;
+    gap: 18px;
+  }
+
+  .auth-card__header h2 {
+    margin: 10px 0 6px;
+    font-size: 1.7rem;
+  }
+
+  .auth-form {
+    gap: 14px;
+  }
+
+  .field__control,
+  .auth-submit,
+  .auth-demo {
+    min-height: 52px;
   }
 }

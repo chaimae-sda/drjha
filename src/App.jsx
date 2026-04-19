@@ -227,7 +227,12 @@ const AppContent = () => {
             {renderCurrentView()}
           </Suspense>
         </main>
-        <BottomNav activeTab={activeTab} onTabChange={navigateToTab} />
+        <BottomNav
+          activeTab={activeTab}
+          onTabChange={navigateToTab}
+          isSubView={currentView.type !== 'tab'}
+          onBack={handleBack}
+        />
         <input ref={fileInputRef} type="file" hidden accept="image/*,.pdf" onChange={handleHomeFileUpload} />
       </div>
     </div>

@@ -15,7 +15,7 @@ const initialState = {
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 
 const Auth = () => {
-  const { login, loginDemo, register } = useContext(AuthContext);
+  const { login, register } = useContext(AuthContext);
   const { t, language, setLanguage, languages } = useI18n();
   const { theme, toggleTheme } = useTheme();
   const [isLogin, setIsLogin] = useState(true);
@@ -51,24 +51,6 @@ const Auth = () => {
       }
     } catch (err) {
       setError(err.message || t('auth.genericError'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDemoAccess = async () => {
-    setFormData((current) => ({
-      ...current,
-      email: 'test@example.com',
-      password: 'password',
-    }));
-    setLoading(true);
-    setError('');
-
-    try {
-      await loginDemo();
-    } catch (err) {
-      setError(err.message || t('auth.demoError'));
     } finally {
       setLoading(false);
     }
@@ -114,9 +96,8 @@ const Auth = () => {
               </button>
             </div>
           </div>
-          <img src={assetUrl('drjha_logo.svg')} alt="Darija Knowledge AI" className="auth-showcase__logo" decoding="async" />
-          <h1>دارجة</h1>
-          <p className="auth-showcase__brand">Knowledge AI</p>
+          <img src={assetUrl('drjha_logo.svg')} alt="drjha" className="auth-showcase__logo" decoding="async" />
+          <h1>{language === 'darija' ? 'درجها' : 'drjha'}</h1>
           <p className="auth-showcase__text">
             {t('auth.showcaseText')}
           </p>
@@ -211,11 +192,6 @@ const Auth = () => {
               {loading ? t('common.loading') : isLogin ? t('auth.login') : t('auth.register')}
             </button>
           </form>
-
-          <button type="button" className="auth-demo" onClick={handleDemoAccess} disabled={loading}>
-            {t('auth.demo')}
-            <span>test@example.com / password</span>
-          </button>
 
           <p className="auth-switch">
             {isLogin ? t('auth.noAccount') : t('auth.hasAccount')}

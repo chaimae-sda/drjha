@@ -17,8 +17,8 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
   const nodes = t('journey.nodes').map((label, index) => ({
     id: index + 1,
     label,
-    top: ['25%', '40%', '48%', '63%', '77%'][index],
-    left: ['48%', '24%', '56%', '24%', '57%'][index],
+    top: ['12%', '24%', '34%', '44%', '54%', '63%', '72%', '82%'][index] ?? `${12 + index * 10}%`,
+    left: ['48%', '24%', '56%', '24%', '56%', '24%', '56%', '48%'][index] ?? '48%',
   }));
 
   useEffect(() => {

@@ -148,9 +148,14 @@ const Library = ({ onSelectText }) => {
                       {text.source === 'scan' ? t('library.sourceScan') : t('library.sourceUpload')}
                     </span>
                     <div className="library-card__actions">
-                      <span className={`favorite-pill ${text.isFavorite ? 'is-active' : ''}`}>
+                      <button
+                        type="button"
+                        className={`favorite-pill ${text.isFavorite ? 'is-active' : ''}`}
+                        onClick={(event) => handleToggleFavorite(event, text._id)}
+                        aria-label={text.isFavorite ? t('library.removeFavorite') : t('library.addFavorite')}
+                      >
                         <Heart size={14} fill={text.isFavorite ? 'currentColor' : 'none'} />
-                      </span>
+                      </button>
                       <button
                         type="button"
                         className="library-more"

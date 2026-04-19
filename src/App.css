@@ -403,6 +403,15 @@
   border: 1px solid transparent;
 }
 
+.home-notification.is-clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.home-notification.is-clickable:hover {
+  background: var(--violet-050);
+}
+
 .home-notification.is-unread {
   border-color: rgba(124, 88, 244, 0.22);
   background: #f5f1ff;
@@ -804,6 +813,13 @@
   padding: 0;
   background: var(--violet-050);
   color: var(--text-soft);
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.favorite-pill:hover {
+  color: #f15a84;
 }
 
 .favorite-pill.is-active {

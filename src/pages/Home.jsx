@@ -81,7 +81,14 @@ const Home = ({
           <div className="home-panel__list">
             {notifications.length === 0 && <p className="home-panel__empty">{t('home.noNotifications')}</p>}
             {notifications.map((notification) => (
-              <div key={notification.id} className={`home-notification ${notification.read ? '' : 'is-unread'}`}>
+              <div
+                key={notification.id}
+                className={`home-notification ${notification.read ? '' : 'is-unread'} is-clickable`}
+                role="button"
+                tabIndex={0}
+                onClick={() => { onMarkNotificationsRead(); onNavigate('library'); }}
+                onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onMarkNotificationsRead(); onNavigate('library'); } }}
+              >
                 <strong>{notification.title}</strong>
                 <p>{notification.body}</p>
               </div>

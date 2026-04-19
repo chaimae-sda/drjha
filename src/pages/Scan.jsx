@@ -11,6 +11,7 @@ const Scan = ({ onTextScanned, onBack }) => {
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
   const canvasRef = useRef(document.createElement('canvas'));
+  const streamRef = useRef(null);
 
   useEffect(() => {
     setStatusMessage(cameraActive ? t('scan.frameHint') : `${t('common.unavailableCamera')}.`);
@@ -31,6 +32,7 @@ const Scan = ({ onTextScanned, onBack }) => {
         audio: false,
       });
 
+      streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
@@ -42,9 +44,18 @@ const Scan = ({ onTextScanned, onBack }) => {
   };
 
   const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
+  const handleBack = () => {
+    stopCamera();
+    onBack();
   };
 
   const capturePhoto = async () => {
@@ -64,6 +75,7 @@ const Scan = ({ onTextScanned, onBack }) => {
       canvas.height = video.videoHeight;
       canvas.getContext('2d').drawImage(video, 0, 0);
       const base64Image = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      stopCamera();
       const result = await importCapturedImage(base64Image, 'image/jpeg');
       if (onTextScanned) {
         onTextScanned(result);
@@ -86,6 +98,7 @@ const Scan = ({ onTextScanned, onBack }) => {
     setStatusMessage(t('scan.fileAnalyze', { name: file.name }));
 
     try {
+      stopCamera();
       const savedText = await importDocument(file);
       if (onTextScanned) {
         onTextScanned(savedText);
@@ -113,7 +126,7 @@ const Scan = ({ onTextScanned, onBack }) => {
 
       <div className="scan-screen__overlay">
         <header className="screen-header screen-header--overlay">
-          <button type="button" className="icon-chip icon-chip--dark" onClick={onBack}>
+          <button type="button" className="icon-chip icon-chip--dark" onClick={handleBack}>
             <ChevronLeft size={20} />
           </button>
           <h2>{t('scan.title')}</h2>

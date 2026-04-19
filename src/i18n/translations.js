@@ -12,7 +12,7 @@ export const DATE_LOCALES = {
 
 export const translations = {
   fr: {
-    appName: 'Darija Knowledge AI',
+    appName: 'drjha',
     common: {
       loadingSpace: 'Chargement de votre espace...',
       loading: 'Chargement...',
@@ -144,7 +144,7 @@ export const translations = {
       explorer: 'Explorateur',
       xp: 'XP',
       mapAlt: 'Carte du parcours',
-      nodes: ['Decouverte', 'Apprenti', 'Curieux', 'Savant', 'Maitre'],
+      nodes: ['Découverte', 'Apprenti', 'Curieux', 'Savant', 'Maître', 'Érudit', 'Expert', 'Légende'],
       xpToNextLevel: '{xp} XP pour le niveau suivant',
       maxLevel: 'Niveau maximum atteint !',
       noQuestionsTitle: 'Tous les quiz terminés !',
@@ -217,7 +217,7 @@ export const translations = {
     },
   },
   en: {
-    appName: 'Darija Knowledge AI',
+    appName: 'drjha',
     common: {
       loadingSpace: 'Loading your space...',
       loading: 'Loading...',
@@ -349,7 +349,7 @@ export const translations = {
       explorer: 'Explorer',
       xp: 'XP',
       mapAlt: 'Journey map',
-      nodes: ['Discovery', 'Learner', 'Curious', 'Scholar', 'Master'],
+      nodes: ['Discovery', 'Learner', 'Curious', 'Scholar', 'Master', 'Erudite', 'Expert', 'Legend'],
       xpToNextLevel: '{xp} XP to next level',
       maxLevel: 'Max level reached!',
       noQuestionsTitle: 'All quizzes done!',
@@ -422,7 +422,7 @@ export const translations = {
     },
   },
   darija: {
-    appName: 'Darija Knowledge AI',
+    appName: 'درجها',
     common: {
       loadingSpace: 'كيتوجد ليك الفضاء ديالك...',
       loading: 'كيتشحن...',
@@ -554,7 +554,7 @@ export const translations = {
       explorer: 'مستكشف',
       xp: 'النقط',
       mapAlt: 'خريطة المسار',
-      nodes: ['اكتشاف', 'متعلم', 'فضولي', 'عارف', 'معلم'],
+      nodes: ['اكتشاف', 'متعلم', 'فضولي', 'عارف', 'معلم', 'عالم', 'خبير', 'أسطورة'],
       xpToNextLevel: '{xp} نقطة للمستوى الموالي',
       maxLevel: 'وصلتي للمستوى الأقصى!',
       noQuestionsTitle: 'كاملتي كل الأسئلة!',

@@ -216,7 +216,7 @@ const AppContent = () => {
   return (
     <div className="app-shell">
       <div className="app-phone-frame">
-        <main className={`app-screen ${currentView.type === 'tab' ? 'with-nav' : ''}`}>
+        <main className="app-screen with-nav">
           <Suspense
             fallback={
               <div className="page-feedback">
@@ -227,7 +227,7 @@ const AppContent = () => {
             {renderCurrentView()}
           </Suspense>
         </main>
-        {currentView.type === 'tab' && <BottomNav activeTab={activeTab} onTabChange={navigateToTab} />}
+        <BottomNav activeTab={activeTab} onTabChange={navigateToTab} />
         <input ref={fileInputRef} type="file" hidden accept="image/*,.pdf" onChange={handleHomeFileUpload} />
       </div>
     </div>

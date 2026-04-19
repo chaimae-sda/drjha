@@ -512,6 +512,7 @@
   left: 18px;
   right: 18px;
   bottom: 18px;
+  z-index: 10;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -2002,8 +2003,33 @@
 
   .app-phone-frame {
     width: 100%;
-    height: 100vh;
+    height: 100dvh;
     border-radius: 0;
     border: 0;
+  }
+
+  .bottom-nav {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 26px 26px 0 0;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-screen.with-nav {
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .screen--home {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .home-hero__logo {
+    width: 160px;
+  }
+
+  .home-illustration-card {
+    min-height: 130px;
   }
 }

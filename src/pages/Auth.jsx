@@ -114,7 +114,7 @@ const Auth = () => {
               </button>
             </div>
           </div>
-          <img src={assetUrl('logo_premium.png')} alt="Darija Knowledge AI" className="auth-showcase__logo" decoding="async" />
+          <img src={assetUrl('drjha_logo.svg')} alt="Darija Knowledge AI" className="auth-showcase__logo" decoding="async" />
           <h1>دارجة</h1>
           <p className="auth-showcase__brand">Knowledge AI</p>
           <p className="auth-showcase__text">

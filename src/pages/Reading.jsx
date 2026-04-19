@@ -244,7 +244,7 @@ const Reading = ({ textId, onBack, onStartQuiz }) => {
         </header>
 
         <div className="audio-artwork">
-          <img src={assetUrl('logo_premium.png')} alt="Darija Knowledge AI" />
+          <img src={assetUrl('drjha_logo.svg')} alt="Darija Knowledge AI" />
         </div>
 
         <div className="audio-meta">

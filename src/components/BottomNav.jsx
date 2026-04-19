@@ -1,8 +1,8 @@
 import React from 'react';
-import { BookOpen, Gamepad2, Home, ScanLine, User } from 'lucide-react';
+import { BookOpen, ChevronLeft, Gamepad2, Home, ScanLine, User } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 
-const BottomNav = ({ activeTab, onTabChange }) => {
+const BottomNav = ({ activeTab, onTabChange, isSubView, onBack }) => {
   const { t } = useI18n();
   const tabs = [
     { id: 'home', label: t('nav.home'), Icon: Home },
@@ -16,6 +16,22 @@ const BottomNav = ({ activeTab, onTabChange }) => {
     <nav className="bottom-nav">
       {tabs.map(({ id, label, Icon, isSpecial }) => {
         const isActive = activeTab === id;
+
+        if (isSpecial && isSubView) {
+          return (
+            <button
+              key={id}
+              type="button"
+              className="bottom-nav__item is-special"
+              onClick={onBack}
+              aria-label={t('common.back')}
+            >
+              <span className="bottom-nav__icon">
+                <ChevronLeft size={28} strokeWidth={2.4} />
+              </span>
+            </button>
+          );
+        }
 
         return (
           <button

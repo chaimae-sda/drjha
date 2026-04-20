@@ -1145,12 +1145,10 @@ const mockHandlers = {
 };
 
 const withFallback = async (primary, fallback) => {
-  try {
-    if (isSupabaseConfigured()) {
+  if (isSupabaseConfigured()) {
+    try {
       return await primary();
-    }
-  } catch (error) {
-    if (!fallback) {
+    } catch (error) {
       return { error: error.message || 'Network error' };
     }
   }

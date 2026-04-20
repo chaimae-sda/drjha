@@ -695,11 +695,9 @@ const fetchJson = async (url, options = {}) => {
 };
 
 const isSupabaseConfigured = () => {
-  const token = getAccessToken();
-  if (token && token.startsWith('mock-token')) {
-    return false; // Force fallback to mock DB if the user logged in locally
-  }
-  return Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
+  // Always use the local fallback database to prevent split-brain issues 
+  // where saveText falls back but getTexts succeeds on an empty remote table.
+  return false; 
 };
 
 const supabaseAuthRequest = async (path, options) =>

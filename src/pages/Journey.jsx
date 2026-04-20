@@ -1,20 +1,25 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { BookOpen, ChevronLeft, FileUp, MoreHorizontal, X } from 'lucide-react';
+import {
+  BookOpen,
+  Check,
+  ChevronLeft,
+  FileUp,
+  Lock,
+  MoreHorizontal,
+  X,
+} from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { apiClient } from '../services/apiService';
 
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 
-/**
- * 🎯 FINAL visually-correct positions (aligned to road)
- */
 const PATH_POINTS = [
-  { top: '84%', left: '50%' }, // Découverte
-  { top: '70%', left: '28%' }, // Apprenti
-  { top: '54%', left: '62%' }, // Curieux
-  { top: '38%', left: '36%' }, // Savant
-  { top: '24%', left: '50%' }, // Maître
+  { top: '91%', left: '50%' }, // Découverte
+  { top: '75%', left: '25%' }, // Apprenti
+  { top: '58%', left: '60%' }, // Curieux
+  { top: '41%', left: '34%' }, // Savant
+  { top: '27%', left: '50%' }, // Maître
 ];
 
 const XP_PER_LEVEL = 500;
@@ -148,90 +153,37 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
       </div>
 
       {/* MAP */}
-      <div
-        style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: 420,
-          margin: '0 auto',
-          aspectRatio: '454 / 600',
-        }}
-      >
+      <div className="journey-map">
         <img
-          src={assetUrl('journey_map.png')}
+          src={assetUrl('journey_map.svg')}
           alt="map"
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            display: 'block',
-          }}
+          className="journey-map__image"
         />
 
         {visibleNodes.map((node) => (
           <button
             key={node.id}
             onClick={() => handleNodeClick(node.id, node.isUnlocked)}
-            style={{
-              position: 'absolute',
-              top: node.top,
-              left: node.left,
-              transform: 'translate(-50%, -60%)', // 🔥 key fix
-              background: 'transparent',
-              border: 'none',
-              textAlign: 'center',
-              cursor: node.isUnlocked ? 'pointer' : 'default',
-            }}
+            className={`journey-node ${node.isComplete ? 'is-complete' : ''} ${node.isCurrent ? 'is-current' : ''
+              } ${!node.isUnlocked ? 'is-locked' : ''}`}
+            style={{ top: node.top, left: node.left }}
+            aria-label={`${node.label} - niveau ${node.id}`}
           >
-            {/* NODE */}
-            <div
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: '50%',
-                background: node.isCurrent
-                  ? '#6C4DFF'
-                  : node.isUnlocked
-                    ? 'rgba(255,255,255,0.95)'
-                    : 'rgba(200,200,200,0.6)',
-                border: '3px solid white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: '600',
-                boxShadow: '0 6px 12px rgba(0,0,0,0.15)',
-              }}
-            >
-              {node.isUnlocked ? node.id : '🔒'}
+            <div className="journey-node__bubble">
+              {!node.isUnlocked ? (
+                <Lock size={16} />
+              ) : node.isComplete ? (
+                <Check size={18} />
+              ) : (
+                node.id
+              )}
             </div>
 
-            {/* LABEL */}
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                background: 'white',
-                padding: '4px 10px',
-                borderRadius: 20,
-                boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {node.label}
-            </div>
+            <div className="journey-node__label">{node.label}</div>
           </button>
         ))}
 
-        {/* TREASURE */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '24%',
-            left: '78%',
-            transform: 'translate(-50%, -50%)',
-            fontSize: 22,
-          }}
-        >
+        <div className="journey-treasure" aria-hidden="true">
           ✨
         </div>
       </div>

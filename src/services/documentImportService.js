@@ -16,6 +16,10 @@ const saveProcessedDocument = async (result, source, file = null) => {
     file?.type || (source === 'scan' ? 'image/jpeg' : ''),
   );
 
+  if (saveResponse?.error) {
+    throw new Error(saveResponse.error);
+  }
+
   return saveResponse?.text || null;
 };
 

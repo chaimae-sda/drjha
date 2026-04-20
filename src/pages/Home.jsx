@@ -102,9 +102,7 @@ const Home = ({
         <p className="home-hero__brand">DRJHA</p>
       </div>
 
-      <div className="home-illustration-card">
-        <div className="home-illustration-card__shape home-illustration-card__shape--left" />
-        <div className="home-illustration-card__shape home-illustration-card__shape--right" />
+      <div className="home-illustration-box">
         <img src={assetUrl('home_illustration.png')} alt="Apprentissage Darija" className="home-illustration-card__image" loading="lazy" decoding="async" />
       </div>
 

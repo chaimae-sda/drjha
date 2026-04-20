@@ -97,6 +97,8 @@
 
 .screen--home {
   position: relative;
+  overflow: hidden;
+  padding-bottom: 88px;
 }
 
 .screen--reading {
@@ -456,10 +458,18 @@
   font-size: 0.82rem;
 }
 
+.home-illustration-box {
+  margin: 6px auto 12px;
+  max-width: 260px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 .home-illustration-card {
-  position: relative;
-  margin: 4px 0 8px;
-  border-radius: 24px;
   padding: 0;
   background: linear-gradient(180deg, #fff9ec 0%, #ffffff 100%);
   overflow: hidden;

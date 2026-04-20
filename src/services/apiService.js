@@ -1149,6 +1149,8 @@ const withFallback = async (primary, fallback) => {
     try {
       return await primary();
     } catch (error) {
+      console.warn('Supabase request failed, falling back to mock:', error);
+      if (fallback) return fallback();
       return { error: error.message || 'Network error' };
     }
   }

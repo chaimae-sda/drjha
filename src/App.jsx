@@ -136,14 +136,16 @@ const AppContent = () => {
   };
 
   const handleTextScanned = (savedText) => {
-    if (savedText?._id) {
+    const validId = savedText?._id || savedText?.id;
+    
+    if (validId) {
       const questionCount = savedText.generatedQuestions?.length || 0;
       addNotification(
         t('notifications.documentReadyTitle'),
         `${t('notifications.documentReadyBody', { title: savedText.title })}${questionCount ? ` ${questionCount} questions sont prêtes.` : ''}`,
       );
       scheduleQuizReminder(savedText.title);
-      navigateToReading(savedText._id);
+      navigateToReading(validId);
       return;
     }
 

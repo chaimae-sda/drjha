@@ -7,15 +7,14 @@ import { apiClient } from '../services/apiService';
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 
 /**
- * ✅ ROAD-ALIGNED NODE POSITIONS
- * These match the actual path in your image
+ * 🎯 FINAL visually-correct positions (aligned to road)
  */
 const PATH_POINTS = [
-  { top: '88%', left: '52%' }, // Découverte
-  { top: '72%', left: '30%' }, // Apprenti
-  { top: '52%', left: '60%' }, // Curieux
-  { top: '36%', left: '34%' }, // Savant
-  { top: '20%', left: '52%' }, // Maître
+  { top: '84%', left: '50%' }, // Découverte
+  { top: '70%', left: '28%' }, // Apprenti
+  { top: '54%', left: '62%' }, // Curieux
+  { top: '38%', left: '36%' }, // Savant
+  { top: '24%', left: '50%' }, // Maître
 ];
 
 const XP_PER_LEVEL = 500;
@@ -34,11 +33,9 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
         apiClient.getJourneyProgress(),
         apiClient.getTexts(),
       ]);
-
       setJourneyData(progress);
       setTexts(Array.isArray(libraryTexts) ? libraryTexts : []);
     };
-
     loadData();
   }, [user?.xp]);
 
@@ -51,15 +48,6 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
     }
 
     const completedTextIds = user?.stats?.completedTextIds || [];
-
-    const allCompleted =
-      texts.length > 0 &&
-      texts.every((text) => completedTextIds.includes(text._id));
-
-    if (allCompleted) {
-      setShowNoQuestionsPrompt(true);
-      return;
-    }
 
     const unquizzedTexts = texts.filter(
       (text) => !completedTextIds.includes(text._id)
@@ -100,29 +88,26 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
 
   const xpToNextLevel = Math.max(
     0,
-    (journeyData.nextLevelXp || currentLevel * XP_PER_LEVEL) - (user?.xp || 0)
+    (journeyData.nextLevelXp || currentLevel * XP_PER_LEVEL) -
+    (user?.xp || 0)
   );
 
   return (
     <section className="journey-screen">
       {/* HEADER */}
       <header className="journey-screen__header">
-        <button
-          type="button"
-          className="icon-chip icon-chip--dark"
-          onClick={onBack}
-        >
+        <button className="icon-chip icon-chip--dark" onClick={onBack}>
           <ChevronLeft size={18} />
         </button>
 
         <h2>{t('journey.title')}</h2>
 
-        <button type="button" className="icon-chip icon-chip--dark">
+        <button className="icon-chip icon-chip--dark">
           <MoreHorizontal size={18} />
         </button>
       </header>
 
-      {/* PROFILE CARD */}
+      {/* PROFILE */}
       <div className="journey-profile">
         <div className="journey-profile__user">
           <img
@@ -146,7 +131,7 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
         </div>
       </div>
 
-      {/* PROGRESS CARD */}
+      {/* XP BAR */}
       <div className="journey-progress-card">
         <div className="journey-progress-card__track">
           <span
@@ -154,7 +139,6 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
             style={{ width: `${levelProgress}%` }}
           />
         </div>
-
         <div className="journey-progress-card__meta">
           <strong>
             {t('journey.currentLevel')} {currentLevel}
@@ -165,19 +149,17 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
 
       {/* MAP */}
       <div
-        className="journey-map"
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: '420px',
+          maxWidth: 420,
           margin: '0 auto',
           aspectRatio: '454 / 600',
         }}
       >
         <img
           src={assetUrl('journey_map.png')}
-          alt={t('journey.mapAlt')}
-          className="journey-map__image"
+          alt="map"
           style={{
             width: '100%',
             height: '100%',
@@ -186,39 +168,68 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
           }}
         />
 
-        {/* NODES */}
         {visibleNodes.map((node) => (
           <button
             key={node.id}
-            type="button"
-            className={`journey-node ${node.isComplete ? 'is-complete' : ''
-              } ${node.isCurrent ? 'is-current' : ''} ${!node.isUnlocked ? 'is-locked' : ''
-              }`}
+            onClick={() => handleNodeClick(node.id, node.isUnlocked)}
             style={{
               position: 'absolute',
               top: node.top,
               left: node.left,
-              transform: 'translate(-50%, -50%)',
-              zIndex: 3,
+              transform: 'translate(-50%, -60%)', // 🔥 key fix
+              background: 'transparent',
+              border: 'none',
+              textAlign: 'center',
+              cursor: node.isUnlocked ? 'pointer' : 'default',
             }}
-            onClick={() => handleNodeClick(node.id, node.isUnlocked)}
           >
-            <span className="journey-node__bubble">
+            {/* NODE */}
+            <div
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: '50%',
+                background: node.isCurrent
+                  ? '#6C4DFF'
+                  : node.isUnlocked
+                    ? 'rgba(255,255,255,0.95)'
+                    : 'rgba(200,200,200,0.6)',
+                border: '3px solid white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: '600',
+                boxShadow: '0 6px 12px rgba(0,0,0,0.15)',
+              }}
+            >
               {node.isUnlocked ? node.id : '🔒'}
-            </span>
-            <span className="journey-node__label">{node.label}</span>
+            </div>
+
+            {/* LABEL */}
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                background: 'white',
+                padding: '4px 10px',
+                borderRadius: 20,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {node.label}
+            </div>
           </button>
         ))}
 
-        {/* TREASURE EFFECT */}
+        {/* TREASURE */}
         <div
-          className="journey-treasure"
           style={{
             position: 'absolute',
-            top: '22%',
-            left: '79%',
+            top: '24%',
+            left: '78%',
             transform: 'translate(-50%, -50%)',
-            zIndex: 2,
+            fontSize: 22,
           }}
         >
           ✨
@@ -230,43 +241,33 @@ const Journey = ({ onBack, onStartQuiz, onNavigate }) => {
         <div className="journey-no-questions">
           <div className="journey-no-questions__card">
             <button
-              type="button"
-              className="journey-no-questions__close"
               onClick={() => setShowNoQuestionsPrompt(false)}
             >
               <X size={18} />
             </button>
 
-            <div className="journey-no-questions__emoji">🎉</div>
+            <div>🎉</div>
 
             <strong>{t('journey.noQuestionsTitle')}</strong>
             <p>{t('journey.noQuestionsBody')}</p>
 
-            <div className="journey-no-questions__actions">
-              <button
-                type="button"
-                className="action-button action-button--primary"
-                onClick={() => {
-                  setShowNoQuestionsPrompt(false);
-                  if (onNavigate) onNavigate('scan');
-                }}
-              >
-                <FileUp size={16} />
-                <span>{t('journey.addMoreDocs')}</span>
-              </button>
+            <button
+              onClick={() => {
+                setShowNoQuestionsPrompt(false);
+                onNavigate?.('scan');
+              }}
+            >
+              <FileUp size={16} /> {t('journey.addMoreDocs')}
+            </button>
 
-              <button
-                type="button"
-                className="action-button action-button--outline"
-                onClick={() => {
-                  setShowNoQuestionsPrompt(false);
-                  if (onNavigate) onNavigate('library');
-                }}
-              >
-                <BookOpen size={16} />
-                <span>{t('journey.goToLibrary')}</span>
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                setShowNoQuestionsPrompt(false);
+                onNavigate?.('library');
+              }}
+            >
+              <BookOpen size={16} /> {t('journey.goToLibrary')}
+            </button>
           </div>
         </div>
       )}

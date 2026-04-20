@@ -63,12 +63,54 @@ const refineToDarija = (text) => {
   return refined;
 };
 
+const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GOOGLE_API_KEY}`;
+
 export const aiService = {
   translate: async (text) => {
     if (!text || text.trim().length === 0) return '';
 
+    // If Gemini key is available, use it for genuine authentic Darija translation
+    if (GOOGLE_API_KEY) {
+      try {
+        const response = await fetch(GEMINI_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    text: `Traduisez le texte français suivant en dialecte marocain authentique (Darija) écrit en caractères arabes. Ne fournissez QUE la traduction, sans guillemets, sans commentaires et sans texte supplémentaire:\n\n${text}`,
+                  },
+                ],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.3,
+            },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Gemini API Error');
+        }
+
+        const data = await response.json();
+        const translatedContent = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (translatedContent) {
+          return translatedContent.trim();
+        }
+      } catch (error) {
+        console.error('Gemini translation failed, falling back to MyMemory:', error);
+      }
+    }
+
+    // Fallback to MyMemory heuristic if Gemini fails or is missing
     try {
-      // Chunking to stay within free API limits (500 chars)
       const maxChars = 400;
       const chunks = text.match(new RegExp(`.{1,${maxChars}}(\\s|$)`, 'g')) || [text];
 
@@ -91,8 +133,6 @@ export const aiService = {
       );
 
       const fullArabic = translatedChunks.join(' ');
-
-      // Apply the Darija transformation
       return refineToDarija(fullArabic);
     } catch (error) {
       console.error('Translation error:', error);

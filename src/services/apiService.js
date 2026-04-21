@@ -120,6 +120,8 @@ const MAX_KEYWORD_WEIGHT = 8;
 const KEYWORD_WEIGHT_DIVISOR = 4;
 const MAX_SENTENCES_FOR_CONCEPTS = 18;
 const MAX_PHRASE_CANDIDATES = 240;
+const MIN_QUALITY_WORD_COUNT = 2;
+const MAX_SINGLE_WORD_OPTIONS = 1;
 
 const normalizeToken = (token = '') =>
   token
@@ -238,7 +240,45 @@ const shuffle = (items) => {
   return next;
 };
 
-const buildFallbackOptions = (answer, keywords = [], fallbacks = ['معلومة عامة', 'تفصيل ثانوي']) => {
+const countWords = (value = '') =>
+  value
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length > 0).length;
+
+const filterByMinWordCount = (items = [], minWordCount = 1) => {
+  if (minWordCount <= 1) {
+    return items;
+  }
+
+  const filtered = items.filter((item) => countWords(item) >= minWordCount);
+  return filtered.length >= 2 ? filtered : items;
+};
+
+const getPreferredConcepts = (concepts = [], fallbackConcepts = []) => {
+  const merged = dedupeCaseInsensitive([...concepts, ...fallbackConcepts]);
+  const multiWordConcepts = merged.filter((item) => countWords(item) >= MIN_QUALITY_WORD_COUNT);
+  return multiWordConcepts.length ? multiWordConcepts : merged;
+};
+
+const getBackupLabelsByLocale = (localeHint = '') => {
+  if (/[\u0600-\u06FF]/u.test(localeHint)) {
+    return ['معلومة مرتبطة بالنص', 'تفصيل مهم', 'موضوع قريب'];
+  }
+
+  if (/\b(off-topic|secondary|information)\b/i.test(localeHint)) {
+    return ['related detail', 'secondary idea', 'connected topic'];
+  }
+
+  return ['idée secondaire', 'information complémentaire', 'sujet connexe'];
+};
+
+const buildFallbackOptions = (
+  answer,
+  keywords = [],
+  fallbacks = ['معلومة عامة', 'تفصيل ثانوي'],
+  { minWordCount = 1 } = {},
+) => {
   const normalizedAnswer = normalizeToken(answer);
   const candidates = dedupeCaseInsensitive([
     ...keywords.filter((item) => item && normalizeToken(item) !== normalizedAnswer),
@@ -248,8 +288,12 @@ const buildFallbackOptions = (answer, keywords = [], fallbacks = ['معلومة 
     'تفصيل إضافي',
   ]).filter((item) => normalizeToken(item) !== normalizedAnswer);
 
-  const distractors = candidates.slice(0, 2);
-  const backupLabels = ['معلومة إضافية', 'تفصيل آخر', 'موضوع مرتبط'];
+  const qualityCandidates = filterByMinWordCount(candidates, minWordCount);
+  const distractors = qualityCandidates.slice(0, 2);
+
+  const localeHint = `${answer || ''} ${fallbacks.join(' ')}`;
+  const backupLabels = getBackupLabelsByLocale(localeHint);
+
   while (distractors.length < 2) {
     distractors.push(backupLabels[distractors.length] || backupLabels[backupLabels.length - 1]);
   }
@@ -271,6 +315,10 @@ const generateQuestionsFromText = (text) => {
   const darijaConcepts = getConceptPool(darijaText || sourceText, title);
   const allConcepts = getConceptPool(sourceText, title);
 
+  const frPreferredConcepts = getPreferredConcepts(frConcepts, allConcepts);
+  const darijaPreferredConcepts = getPreferredConcepts(darijaConcepts, allConcepts);
+  const allPreferredConcepts = getPreferredConcepts(allConcepts, frConcepts);
+
   const frSentences = (originalText || sourceText)
     .split(/[.!?\n]+/)
     .map((s) => s.trim())
@@ -281,13 +329,13 @@ const generateQuestionsFromText = (text) => {
     .map((s) => s.trim())
     .filter((s) => s.length > 12);
 
-  const firstFrAnswer = frConcepts[0] || allConcepts[0] || title;
-  const secondFrAnswer = frConcepts[1] || allConcepts[1] || DEFAULT_CONCEPT_FALLBACKS.fr[0];
-  const thirdFrAnswer = frConcepts[2] || allConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.fr[1];
+  const firstFrAnswer = frPreferredConcepts[0] || allPreferredConcepts[0] || title;
+  const secondFrAnswer = frPreferredConcepts[1] || allPreferredConcepts[1] || DEFAULT_CONCEPT_FALLBACKS.fr[0];
+  const thirdFrAnswer = frPreferredConcepts[2] || allPreferredConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.fr[1];
 
-  const firstDarijaAnswer = darijaConcepts[0] || allConcepts[0] || title;
-  const secondDarijaAnswer = darijaConcepts[1] || allConcepts[1] || DEFAULT_CONCEPT_FALLBACKS.darija[0];
-  const thirdDarijaAnswer = darijaConcepts[2] || allConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.darija[1];
+  const firstDarijaAnswer = darijaPreferredConcepts[0] || allPreferredConcepts[0] || title;
+  const secondDarijaAnswer = darijaPreferredConcepts[1] || allPreferredConcepts[1] || DEFAULT_CONCEPT_FALLBACKS.darija[0];
+  const thirdDarijaAnswer = darijaPreferredConcepts[2] || allPreferredConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.darija[1];
 
   const frFallbacks = ['thème secondaire', 'information hors sujet'];
   const enFallbacks = ['secondary theme', 'off-topic information'];
@@ -302,11 +350,11 @@ const generateQuestionsFromText = (text) => {
       correctAnswerFr: firstFrAnswer,
       correctAnswerEn: firstFrAnswer,
       correctAnswerDarija: firstDarijaAnswer,
-      optionsFr: buildFallbackOptions(firstFrAnswer, frConcepts, frFallbacks),
-      optionsEn: buildFallbackOptions(firstFrAnswer, frConcepts, enFallbacks),
-      optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaConcepts, darijaFallbacks),
+      optionsFr: buildFallbackOptions(firstFrAnswer, frPreferredConcepts, frFallbacks, { minWordCount: 2 }),
+      optionsEn: buildFallbackOptions(firstFrAnswer, frPreferredConcepts, enFallbacks, { minWordCount: 2 }),
+      optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2 }),
       correctAnswer: firstDarijaAnswer,
-      options: buildFallbackOptions(firstDarijaAnswer, darijaConcepts, darijaFallbacks),
+      options: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2 }),
       xpReward: 20,
     },
     {
@@ -317,11 +365,11 @@ const generateQuestionsFromText = (text) => {
       correctAnswerFr: secondFrAnswer,
       correctAnswerEn: secondFrAnswer,
       correctAnswerDarija: secondDarijaAnswer,
-      optionsFr: buildFallbackOptions(secondFrAnswer, frConcepts.slice().reverse(), frFallbacks),
-      optionsEn: buildFallbackOptions(secondFrAnswer, frConcepts.slice().reverse(), enFallbacks),
-      optionsDarija: buildFallbackOptions(secondDarijaAnswer, darijaConcepts.slice().reverse(), darijaFallbacks),
+      optionsFr: buildFallbackOptions(secondFrAnswer, frPreferredConcepts.slice().reverse(), frFallbacks, { minWordCount: 2 }),
+      optionsEn: buildFallbackOptions(secondFrAnswer, frPreferredConcepts.slice().reverse(), enFallbacks, { minWordCount: 2 }),
+      optionsDarija: buildFallbackOptions(secondDarijaAnswer, darijaPreferredConcepts.slice().reverse(), darijaFallbacks, { minWordCount: 2 }),
       correctAnswer: secondDarijaAnswer,
-      options: buildFallbackOptions(secondDarijaAnswer, darijaConcepts.slice().reverse(), darijaFallbacks),
+      options: buildFallbackOptions(secondDarijaAnswer, darijaPreferredConcepts.slice().reverse(), darijaFallbacks, { minWordCount: 2 }),
       xpReward: 20,
     },
     {
@@ -338,14 +386,40 @@ const generateQuestionsFromText = (text) => {
       correctAnswerFr: thirdFrAnswer,
       correctAnswerEn: thirdFrAnswer,
       correctAnswerDarija: thirdDarijaAnswer,
-      optionsFr: buildFallbackOptions(thirdFrAnswer, frConcepts, frFallbacks),
-      optionsEn: buildFallbackOptions(thirdFrAnswer, frConcepts, enFallbacks),
-      optionsDarija: buildFallbackOptions(thirdDarijaAnswer, darijaConcepts, darijaFallbacks),
+      optionsFr: buildFallbackOptions(thirdFrAnswer, frPreferredConcepts, frFallbacks, { minWordCount: 2 }),
+      optionsEn: buildFallbackOptions(thirdFrAnswer, frPreferredConcepts, enFallbacks, { minWordCount: 2 }),
+      optionsDarija: buildFallbackOptions(thirdDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2 }),
       correctAnswer: thirdDarijaAnswer,
-      options: buildFallbackOptions(thirdDarijaAnswer, darijaConcepts, darijaFallbacks),
+      options: buildFallbackOptions(thirdDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2 }),
       xpReward: 30,
     },
   ];
+};
+
+const isWeakOptionSet = (options = []) =>
+  !Array.isArray(options) ||
+  options.length < 3 ||
+  options.filter((option) => countWords(String(option || '')) < MIN_QUALITY_WORD_COUNT).length > MAX_SINGLE_WORD_OPTIONS;
+
+const isLowQualityGeneratedQuiz = (questions = []) =>
+  !Array.isArray(questions) ||
+  questions.length === 0 ||
+  questions.some((question) => {
+    const answers = [question?.correctAnswerFr, question?.correctAnswerDarija, question?.correctAnswer]
+      .filter(Boolean)
+      .map((value) => String(value));
+    const weakAnswer =
+      answers.length > 0 && answers.every((answer) => countWords(answer) < MIN_QUALITY_WORD_COUNT);
+    const weakOptions = [question?.optionsFr, question?.optionsDarija, question?.options].some(isWeakOptionSet);
+    return weakAnswer || weakOptions;
+  });
+
+const ensureHighQualityQuestions = (text, existingQuestions = []) => {
+  if (!Array.isArray(existingQuestions) || existingQuestions.length === 0 || isLowQualityGeneratedQuiz(existingQuestions)) {
+    return generateQuestionsFromText(text);
+  }
+
+  return existingQuestions;
 };
 
 const buildDefaultQuiz = () => [
@@ -698,10 +772,7 @@ const loadMockDb = () => {
   const texts = mergedDb.texts.map((text) => ({
     ...text,
     ownerId: text.ownerId || 'test_user_id',
-    generatedQuestions:
-      Array.isArray(text.generatedQuestions) && text.generatedQuestions.length > 0
-        ? text.generatedQuestions
-        : generateQuestionsFromText(text),
+    generatedQuestions: ensureHighQualityQuestions(text, text.generatedQuestions),
   }));
 
   localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
@@ -825,10 +896,7 @@ const normalizeTextRecord = (record) => ({
   source: record.source || 'upload',
   fileName: record.file_name || '',
   mimeType: record.mime_type || '',
-  generatedQuestions:
-    Array.isArray(record.generated_questions) && record.generated_questions.length > 0
-      ? record.generated_questions
-      : generateQuestionsFromText(record),
+  generatedQuestions: ensureHighQualityQuestions(record, record.generated_questions),
   readCount: record.read_count || 0,
   isFavorite: Boolean(record.is_favorite),
   createdAt: record.created_at || new Date().toISOString(),
@@ -1193,12 +1261,18 @@ const mockHandlers = {
       return buildDefaultQuiz();
     }
 
-    if (!Array.isArray(text.generatedQuestions) || text.generatedQuestions.length === 0) {
-      text.generatedQuestions = generateQuestionsFromText(text);
+    const refreshedQuestions = ensureHighQualityQuestions(text, text.generatedQuestions);
+    const shouldPersist =
+      !Array.isArray(text.generatedQuestions) ||
+      text.generatedQuestions.length === 0 ||
+      isLowQualityGeneratedQuiz(text.generatedQuestions);
+
+    if (shouldPersist) {
+      text.generatedQuestions = refreshedQuestions;
       saveMockDb(db);
     }
 
-    return text.generatedQuestions.length > 0 ? text.generatedQuestions : buildDefaultQuiz();
+    return refreshedQuestions.length > 0 ? refreshedQuestions : buildDefaultQuiz();
   },
 
   getJourneyProgress: async () => {
@@ -1636,6 +1710,23 @@ export const apiClient = {
         const record = rows?.[0];
         if (!record) {
           return buildDefaultQuiz();
+        }
+
+        const existingQuestions = Array.isArray(record.generated_questions) ? record.generated_questions : [];
+        const needsRefresh = existingQuestions.length === 0 || isLowQualityGeneratedQuiz(existingQuestions);
+
+        if (needsRefresh) {
+          const refreshed = generateQuestionsFromText(normalizeTextRecord(record));
+          try {
+            await supabaseRestRequest(`/texts?id=eq.${textId}&select=*`, {
+              method: 'PATCH',
+              body: { generated_questions: refreshed },
+              prefer: 'return=representation',
+            });
+          } catch (error) {
+            console.warn('Unable to persist refreshed quiz questions to Supabase:', error);
+          }
+          return refreshed.length ? refreshed : buildDefaultQuiz();
         }
 
         const text = normalizeTextRecord(record);

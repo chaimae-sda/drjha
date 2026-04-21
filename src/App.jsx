@@ -128,7 +128,7 @@ const AppContent = () => {
     }
 
     if (currentView.type === 'quiz') {
-      setCurrentView({ type: 'reading', id: currentView.id });
+      navigateToTab('journey');
       return;
     }
 

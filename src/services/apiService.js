@@ -53,27 +53,178 @@ const emitUserSync = (user) => {
   }
 };
 
-const getKeywordPool = (text = '') =>
-  [
-    ...new Set(
-      text
-        .replace(/[.,!?;:()[\]{}"'`’”“]/g, ' ')
-        .split(/\s+/)
-        .map((word) => word.trim())
-        .filter((word) => word.length > 4),
-    ),
-  ];
+const FR_STOPWORDS = new Set([
+  'alors',
+  'avec',
+  'avoir',
+  'cette',
+  'dans',
+  'depuis',
+  'elle',
+  'elles',
+  'entre',
+  'etre',
+  'fait',
+  'font',
+  'leur',
+  'leurs',
+  'mais',
+  'meme',
+  'nous',
+  'notre',
+  'pour',
+  'plus',
+  'sans',
+  'sont',
+  'tres',
+  'tout',
+  'tous',
+  'une',
+  'votre',
+  'vous',
+  'petit',
+  'petite',
+  'grand',
+  'grande',
+  'histoire',
+]);
+
+const DARIJA_STOPWORDS = new Set([
+  'هذا',
+  'هاد',
+  'هادا',
+  'هادي',
+  'هادو',
+  'ديال',
+  'على',
+  'في',
+  'فهاد',
+  'باش',
+  'واش',
+  'شنو',
+  'كيفاش',
+  'فين',
+  'مهم',
+  'بزاف',
+  'النص',
+  'الوثيقة',
+]);
+
+const normalizeToken = (token = '') =>
+  token
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/(^[^\p{L}\p{N}\u0600-\u06FF]+|[^\p{L}\p{N}\u0600-\u06FF]+$)/gu, '')
+    .trim();
+
+const hasLetter = (token = '') => /[\p{L}\u0600-\u06FF]/u.test(token);
+
+const isMeaningfulToken = (token = '') => {
+  const normalized = normalizeToken(token);
+  if (!normalized || normalized.length < 4 || !hasLetter(normalized)) {
+    return false;
+  }
+
+  if (FR_STOPWORDS.has(normalized) || DARIJA_STOPWORDS.has(normalized)) {
+    return false;
+  }
+
+  return true;
+};
+
+const dedupeCaseInsensitive = (items = []) => {
+  const seen = new Set();
+  return items.filter((item) => {
+    const key = normalizeToken(item);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
+const getKeywordPool = (text = '') => {
+  const frequency = new Map();
+
+  text
+    .replace(/[.,!?;:()[\]{}"'`’”“]/g, ' ')
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(isMeaningfulToken)
+    .forEach((token) => {
+      const normalized = normalizeToken(token);
+      frequency.set(normalized, (frequency.get(normalized) || 0) + 1);
+    });
+
+  return [...frequency.entries()]
+    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+    .map(([token]) => token);
+};
+
+const getConceptPool = (text = '', title = '') => {
+  const sentences = text
+    .split(/[.!?؟\n]+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 18);
+
+  const phraseScores = new Map();
+  const registerPhrase = (phrase, weight = 1) => {
+    const normalized = normalizeToken(phrase);
+    if (!normalized || normalized.length < 6 || FR_STOPWORDS.has(normalized) || DARIJA_STOPWORDS.has(normalized)) {
+      return;
+    }
+    phraseScores.set(normalized, (phraseScores.get(normalized) || 0) + weight);
+  };
+
+  if (title?.trim()) {
+    registerPhrase(title.trim(), 4);
+  }
+
+  sentences.forEach((sentence, index) => {
+    const rawTokens = sentence.split(/\s+/).map((token) => token.trim()).filter(Boolean);
+    const tokens = rawTokens.map(normalizeToken).filter(isMeaningfulToken);
+
+    for (let size = 2; size <= 3; size += 1) {
+      for (let i = 0; i <= tokens.length - size; i += 1) {
+        const phrase = tokens.slice(i, i + size).join(' ');
+        registerPhrase(phrase, Math.max(1, 3 - index));
+      }
+    }
+
+    if (tokens.length) {
+      registerPhrase(tokens[0], Math.max(1, 2 - index));
+    }
+  });
+
+  const keywordPool = getKeywordPool(text).map((token, index) => [token, Math.max(1, 6 - index)]);
+  keywordPool.forEach(([token, weight]) => registerPhrase(token, weight));
+
+  return dedupeCaseInsensitive(
+    [...phraseScores.entries()]
+      .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+      .map(([phrase]) => phrase),
+  );
+};
 
 const shuffle = (items) => [...items].sort(() => Math.random() - 0.5);
 
 const buildFallbackOptions = (answer, keywords = [], fallbacks = ['معلومة عامة', 'تفصيل ثانوي']) => {
-  const distractors = keywords.filter((item) => item && item !== answer).slice(0, 4);
+  const distractors = dedupeCaseInsensitive(
+    keywords.filter((item) => item && normalizeToken(item) !== normalizeToken(answer)),
+  ).slice(0, 4);
 
   while (distractors.length < 2) {
-    distractors.push(fallbacks[distractors.length] || 'تفصيل ثانوي');
+    const fallback = fallbacks[distractors.length] || 'تفصيل ثانوي';
+    if (normalizeToken(fallback) !== normalizeToken(answer)) {
+      distractors.push(fallback);
+    } else {
+      distractors.push(`${fallback} إضافي`);
+    }
   }
 
-  return shuffle([answer, distractors[0], distractors[1]]);
+  return dedupeCaseInsensitive(shuffle([answer, distractors[0], distractors[1]])).slice(0, 3);
 };
 
 const generateQuestionsFromText = (text) => {
@@ -86,9 +237,9 @@ const generateQuestionsFromText = (text) => {
     return [];
   }
 
-  const frKeywords = getKeywordPool(originalText || sourceText);
-  const darijaKeywords = getKeywordPool(darijaText || sourceText);
-  const allKeywords = getKeywordPool(sourceText);
+  const frConcepts = getConceptPool(originalText || sourceText, title);
+  const darijaConcepts = getConceptPool(darijaText || sourceText, title);
+  const allConcepts = getConceptPool(sourceText, title);
 
   const frSentences = (originalText || sourceText)
     .split(/[.!?\n]+/)
@@ -100,17 +251,17 @@ const generateQuestionsFromText = (text) => {
     .map((s) => s.trim())
     .filter((s) => s.length > 12);
 
-  const firstFrAnswer = frKeywords[0] || allKeywords[0] || title;
-  const secondFrAnswer = frKeywords[1] || allKeywords[1] || 'apprentissage';
-  const thirdFrAnswer = frKeywords[2] || allKeywords[2] || 'connaissance';
+  const firstFrAnswer = frConcepts[0] || allConcepts[0] || title;
+  const secondFrAnswer = frConcepts[1] || allConcepts[1] || 'idee principale';
+  const thirdFrAnswer = frConcepts[2] || allConcepts[2] || 'information essentielle';
 
-  const firstDarijaAnswer = darijaKeywords[0] || allKeywords[0] || title;
-  const secondDarijaAnswer = darijaKeywords[1] || allKeywords[1] || 'التعلم';
-  const thirdDarijaAnswer = darijaKeywords[2] || allKeywords[2] || 'المعرفة';
+  const firstDarijaAnswer = darijaConcepts[0] || allConcepts[0] || title;
+  const secondDarijaAnswer = darijaConcepts[1] || allConcepts[1] || 'فكرة اساسية';
+  const thirdDarijaAnswer = darijaConcepts[2] || allConcepts[2] || 'معلومة مهمة';
 
-  const frFallbacks = ['information générale', 'détail secondaire'];
-  const enFallbacks = ['general info', 'secondary detail'];
-  const darijaFallbacks = ['معلومة عامة', 'تفصيل ثانوي'];
+  const frFallbacks = ['thème secondaire', 'information hors sujet'];
+  const enFallbacks = ['secondary theme', 'off-topic information'];
+  const darijaFallbacks = ['موضوع ثانوي', 'معلومة خارج السياق'];
 
   return [
     {
@@ -121,11 +272,11 @@ const generateQuestionsFromText = (text) => {
       correctAnswerFr: firstFrAnswer,
       correctAnswerEn: firstFrAnswer,
       correctAnswerDarija: firstDarijaAnswer,
-      optionsFr: buildFallbackOptions(firstFrAnswer, frKeywords, frFallbacks),
-      optionsEn: buildFallbackOptions(firstFrAnswer, frKeywords, enFallbacks),
-      optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaKeywords, darijaFallbacks),
+      optionsFr: buildFallbackOptions(firstFrAnswer, frConcepts, frFallbacks),
+      optionsEn: buildFallbackOptions(firstFrAnswer, frConcepts, enFallbacks),
+      optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaConcepts, darijaFallbacks),
       correctAnswer: firstDarijaAnswer,
-      options: buildFallbackOptions(firstDarijaAnswer, darijaKeywords, darijaFallbacks),
+      options: buildFallbackOptions(firstDarijaAnswer, darijaConcepts, darijaFallbacks),
       xpReward: 20,
     },
     {
@@ -136,11 +287,11 @@ const generateQuestionsFromText = (text) => {
       correctAnswerFr: secondFrAnswer,
       correctAnswerEn: secondFrAnswer,
       correctAnswerDarija: secondDarijaAnswer,
-      optionsFr: buildFallbackOptions(secondFrAnswer, frKeywords.slice().reverse(), frFallbacks),
-      optionsEn: buildFallbackOptions(secondFrAnswer, frKeywords.slice().reverse(), enFallbacks),
-      optionsDarija: buildFallbackOptions(secondDarijaAnswer, darijaKeywords.slice().reverse(), darijaFallbacks),
+      optionsFr: buildFallbackOptions(secondFrAnswer, frConcepts.slice().reverse(), frFallbacks),
+      optionsEn: buildFallbackOptions(secondFrAnswer, frConcepts.slice().reverse(), enFallbacks),
+      optionsDarija: buildFallbackOptions(secondDarijaAnswer, darijaConcepts.slice().reverse(), darijaFallbacks),
       correctAnswer: secondDarijaAnswer,
-      options: buildFallbackOptions(secondDarijaAnswer, darijaKeywords.slice().reverse(), darijaFallbacks),
+      options: buildFallbackOptions(secondDarijaAnswer, darijaConcepts.slice().reverse(), darijaFallbacks),
       xpReward: 20,
     },
     {
@@ -157,11 +308,11 @@ const generateQuestionsFromText = (text) => {
       correctAnswerFr: thirdFrAnswer,
       correctAnswerEn: thirdFrAnswer,
       correctAnswerDarija: thirdDarijaAnswer,
-      optionsFr: buildFallbackOptions(thirdFrAnswer, frKeywords, frFallbacks),
-      optionsEn: buildFallbackOptions(thirdFrAnswer, frKeywords, enFallbacks),
-      optionsDarija: buildFallbackOptions(thirdDarijaAnswer, darijaKeywords, darijaFallbacks),
+      optionsFr: buildFallbackOptions(thirdFrAnswer, frConcepts, frFallbacks),
+      optionsEn: buildFallbackOptions(thirdFrAnswer, frConcepts, enFallbacks),
+      optionsDarija: buildFallbackOptions(thirdDarijaAnswer, darijaConcepts, darijaFallbacks),
       correctAnswer: thirdDarijaAnswer,
-      options: buildFallbackOptions(thirdDarijaAnswer, darijaKeywords, darijaFallbacks),
+      options: buildFallbackOptions(thirdDarijaAnswer, darijaConcepts, darijaFallbacks),
       xpReward: 30,
     },
   ];

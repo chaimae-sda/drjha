@@ -63,20 +63,20 @@ const FR_STOPWORDS = new Set([
   'elle',
   'elles',
   'entre',
-  'etre',
+  'être',
   'fait',
   'font',
   'leur',
   'leurs',
   'mais',
-  'meme',
+  'même',
   'nous',
   'notre',
   'pour',
   'plus',
   'sans',
   'sont',
-  'tres',
+  'très',
   'tout',
   'tous',
   'une',
@@ -109,6 +109,17 @@ const DARIJA_STOPWORDS = new Set([
   'النص',
   'الوثيقة',
 ]);
+
+const DEFAULT_CONCEPT_FALLBACKS = {
+  fr: ['idée principale', 'information essentielle'],
+  darija: ['فكرة أساسية', 'معلومة مهمة'],
+};
+
+const MIN_PHRASE_LENGTH = 6;
+const MAX_KEYWORD_WEIGHT = 8;
+const KEYWORD_WEIGHT_DIVISOR = 4;
+const MAX_SENTENCES_FOR_CONCEPTS = 18;
+const MAX_PHRASE_CANDIDATES = 240;
 
 const normalizeToken = (token = '') =>
   token
@@ -167,12 +178,19 @@ const getConceptPool = (text = '', title = '') => {
   const sentences = text
     .split(/[.!?؟\n]+/)
     .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 18);
+    .filter((sentence) => sentence.length > 18)
+    .slice(0, MAX_SENTENCES_FOR_CONCEPTS);
 
   const phraseScores = new Map();
   const registerPhrase = (phrase, weight = 1) => {
     const normalized = normalizeToken(phrase);
-    if (!normalized || normalized.length < 6 || FR_STOPWORDS.has(normalized) || DARIJA_STOPWORDS.has(normalized)) {
+    if (
+      !normalized ||
+      normalized.length < MIN_PHRASE_LENGTH ||
+      FR_STOPWORDS.has(normalized) ||
+      DARIJA_STOPWORDS.has(normalized) ||
+      (phraseScores.size >= MAX_PHRASE_CANDIDATES && !phraseScores.has(normalized))
+    ) {
       return;
     }
     phraseScores.set(normalized, (phraseScores.get(normalized) || 0) + weight);
@@ -189,16 +207,19 @@ const getConceptPool = (text = '', title = '') => {
     for (let size = 2; size <= 3; size += 1) {
       for (let i = 0; i <= tokens.length - size; i += 1) {
         const phrase = tokens.slice(i, i + size).join(' ');
-        registerPhrase(phrase, Math.max(1, 3 - index));
+        registerPhrase(phrase, Math.max(1, 5 - Math.floor(index / 3)));
       }
     }
 
     if (tokens.length) {
-      registerPhrase(tokens[0], Math.max(1, 2 - index));
+      registerPhrase(tokens[0], Math.max(1, 4 - Math.floor(index / 3)));
     }
   });
 
-  const keywordPool = getKeywordPool(text).map((token, index) => [token, Math.max(1, 6 - index)]);
+  const keywordPool = getKeywordPool(text).map((token, index) => [
+    token,
+    Math.max(1, MAX_KEYWORD_WEIGHT - Math.floor(index / KEYWORD_WEIGHT_DIVISOR)),
+  ]);
   keywordPool.forEach(([token, weight]) => registerPhrase(token, weight));
 
   return dedupeCaseInsensitive(
@@ -208,23 +229,32 @@ const getConceptPool = (text = '', title = '') => {
   );
 };
 
-const shuffle = (items) => [...items].sort(() => Math.random() - 0.5);
+const shuffle = (items) => {
+  const next = [...items];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+};
 
 const buildFallbackOptions = (answer, keywords = [], fallbacks = ['معلومة عامة', 'تفصيل ثانوي']) => {
-  const distractors = dedupeCaseInsensitive(
-    keywords.filter((item) => item && normalizeToken(item) !== normalizeToken(answer)),
-  ).slice(0, 4);
+  const normalizedAnswer = normalizeToken(answer);
+  const candidates = dedupeCaseInsensitive([
+    ...keywords.filter((item) => item && normalizeToken(item) !== normalizedAnswer),
+    ...fallbacks,
+    'موضوع آخر',
+    'معلومة عامة',
+    'تفصيل إضافي',
+  ]).filter((item) => normalizeToken(item) !== normalizedAnswer);
 
+  const distractors = candidates.slice(0, 2);
+  const backupLabels = ['معلومة إضافية', 'تفصيل آخر', 'موضوع مرتبط'];
   while (distractors.length < 2) {
-    const fallback = fallbacks[distractors.length] || 'تفصيل ثانوي';
-    if (normalizeToken(fallback) !== normalizeToken(answer)) {
-      distractors.push(fallback);
-    } else {
-      distractors.push(`${fallback} إضافي`);
-    }
+    distractors.push(backupLabels[distractors.length] || backupLabels[backupLabels.length - 1]);
   }
 
-  return dedupeCaseInsensitive(shuffle([answer, distractors[0], distractors[1]])).slice(0, 3);
+  return shuffle([answer, distractors[0], distractors[1]]);
 };
 
 const generateQuestionsFromText = (text) => {
@@ -252,12 +282,12 @@ const generateQuestionsFromText = (text) => {
     .filter((s) => s.length > 12);
 
   const firstFrAnswer = frConcepts[0] || allConcepts[0] || title;
-  const secondFrAnswer = frConcepts[1] || allConcepts[1] || 'idee principale';
-  const thirdFrAnswer = frConcepts[2] || allConcepts[2] || 'information essentielle';
+  const secondFrAnswer = frConcepts[1] || allConcepts[1] || DEFAULT_CONCEPT_FALLBACKS.fr[0];
+  const thirdFrAnswer = frConcepts[2] || allConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.fr[1];
 
   const firstDarijaAnswer = darijaConcepts[0] || allConcepts[0] || title;
-  const secondDarijaAnswer = darijaConcepts[1] || allConcepts[1] || 'فكرة اساسية';
-  const thirdDarijaAnswer = darijaConcepts[2] || allConcepts[2] || 'معلومة مهمة';
+  const secondDarijaAnswer = darijaConcepts[1] || allConcepts[1] || DEFAULT_CONCEPT_FALLBACKS.darija[0];
+  const thirdDarijaAnswer = darijaConcepts[2] || allConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.darija[1];
 
   const frFallbacks = ['thème secondaire', 'information hors sujet'];
   const enFallbacks = ['secondary theme', 'off-topic information'];

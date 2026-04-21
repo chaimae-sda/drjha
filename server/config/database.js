@@ -1,14 +1,23 @@
-import mongoose from 'mongoose';
+import { isSupabaseConnected } from './supabase.js';
 
 export const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
-    console.log('✅ MongoDB connected successfully');
+    // Check if Supabase is configured
+    if (isSupabaseConnected()) {
+      console.log('✅ Supabase connected successfully');
+      return true;
+    } else {
+      console.warn('⚠️  Supabase not configured');
+      console.warn('⚠️  Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env');
+      console.warn('⚠️  Server will run with limited functionality');
+      return false;
+    }
   } catch (error) {
-    console.warn('⚠️  MongoDB connection error:', error.message);
-    console.warn('⚠️  Server running without database - requests will be queued');
+    console.warn('⚠️  Database connection error:', error.message);
+    return false;
   }
+};
+
+export const isDatabaseConnected = () => {
+  return isSupabaseConnected();
 };

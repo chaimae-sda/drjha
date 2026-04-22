@@ -5,7 +5,7 @@ const SUPABASE_PUBLISHABLE_KEY =
   'sb_publishable_KBwGs_g-cjNAJnnfSY-ZMw_MpCmZkTH';
 
 const USER_SYNC_EVENT = 'darija:user-updated';
-const XP_PER_LEVEL = 500;
+const XP_PER_LEVEL = 300;
 const STORAGE_KEYS = {
   user: 'darija.session.user',
   accessToken: 'darija.session.access_token',
@@ -122,6 +122,14 @@ const MAX_SENTENCES_FOR_CONCEPTS = 18;
 const MAX_PHRASE_CANDIDATES = 240;
 const MIN_QUALITY_WORD_COUNT = 2;
 const MAX_SINGLE_WORD_OPTIONS = 1;
+const QUIZ_TARGET_COUNT = 5;
+const QUIZ_ENGINE_VERSION = 'smart-ai-v1';
+const QUIZ_FALLBACK_ENGINE_VERSION = 'smart-fallback-v2';
+const MAX_AI_SOURCE_LENGTH = 3600;
+const GEMINI_QUIZ_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || '';
+const GEMINI_QUIZ_ENDPOINT = GEMINI_QUIZ_API_KEY
+  ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_QUIZ_API_KEY}`
+  : '';
 
 const normalizeToken = (token = '') =>
   token
@@ -177,45 +185,40 @@ const getKeywordPool = (text = '') => {
 };
 
 const getConceptPool = (text = '', title = '') => {
-  const sentences = text
-    .split(/[.!?؟\n]+/)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 18)
-    .slice(0, MAX_SENTENCES_FOR_CONCEPTS);
+  const clauses = text
+    .split(/[.!?؟\n,;:()]+/)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => {
+      const words = chunk.split(/\s+/).filter(Boolean);
+      return words.length >= 2 && words.length <= 12;
+    });
 
   const phraseScores = new Map();
   const registerPhrase = (phrase, weight = 1) => {
-    const normalized = normalizeToken(phrase);
-    if (
-      !normalized ||
-      normalized.length < MIN_PHRASE_LENGTH ||
-      FR_STOPWORDS.has(normalized) ||
-      DARIJA_STOPWORDS.has(normalized) ||
-      (phraseScores.size >= MAX_PHRASE_CANDIDATES && !phraseScores.has(normalized))
-    ) {
+    if (!phrase || phrase.length < MIN_PHRASE_LENGTH) {
       return;
     }
-    phraseScores.set(normalized, (phraseScores.get(normalized) || 0) + weight);
+    
+    const words = phrase.toLowerCase().split(/\s+/).filter(Boolean);
+    const allStopwords = words.every((w) => FR_STOPWORDS.has(w) || DARIJA_STOPWORDS.has(w));
+    if (allStopwords) {
+      return;
+    }
+
+    const normalizedKey = normalizeToken(phrase);
+    if (!normalizedKey || (phraseScores.size >= MAX_PHRASE_CANDIDATES && !phraseScores.has(normalizedKey))) {
+      return;
+    }
+    
+    phraseScores.set(phrase, (phraseScores.get(phrase) || 0) + weight);
   };
 
   if (title?.trim()) {
     registerPhrase(title.trim(), 4);
   }
 
-  sentences.forEach((sentence, index) => {
-    const rawTokens = sentence.split(/\s+/).map((token) => token.trim()).filter(Boolean);
-    const tokens = rawTokens.map(normalizeToken).filter(isMeaningfulToken);
-
-    for (let size = 2; size <= 3; size += 1) {
-      for (let i = 0; i <= tokens.length - size; i += 1) {
-        const phrase = tokens.slice(i, i + size).join(' ');
-        registerPhrase(phrase, Math.max(1, 5 - Math.floor(index / 3)));
-      }
-    }
-
-    if (tokens.length) {
-      registerPhrase(tokens[0], Math.max(1, 4 - Math.floor(index / 3)));
-    }
+  clauses.forEach((clause, index) => {
+    registerPhrase(clause, Math.max(1, 5 - Math.floor(index / 4)));
   });
 
   const keywordPool = getKeywordPool(text).map((token, index) => [
@@ -289,13 +292,59 @@ const buildFallbackOptions = (
   ]).filter((item) => normalizeToken(item) !== normalizedAnswer);
 
   const qualityCandidates = filterByMinWordCount(candidates, minWordCount);
-  const distractors = qualityCandidates.slice(0, 2);
+  const toTokenSet = (value = '') =>
+    new Set(
+      normalizeToken(value)
+        .split(/\s+/)
+        .filter((token) => token.length > 2),
+    );
+
+  const similarityScore = (a, b) => {
+    const setA = toTokenSet(a);
+    const setB = toTokenSet(b);
+
+    if (setA.size === 0 || setB.size === 0) {
+      return 0;
+    }
+
+    let overlap = 0;
+    setA.forEach((token) => {
+      if (setB.has(token)) {
+        overlap += 1;
+      }
+    });
+
+    return overlap / Math.max(setA.size, setB.size);
+  };
+
+  const isTooSimilar = (a, b) => similarityScore(a, b) >= 0.72;
+
+  const distractors = [];
+  for (const candidate of qualityCandidates) {
+    if (isTooSimilar(candidate, answer)) {
+      continue;
+    }
+
+    if (distractors.some((existing) => isTooSimilar(existing, candidate))) {
+      continue;
+    }
+
+    distractors.push(candidate);
+    if (distractors.length >= 2) {
+      break;
+    }
+  }
 
   const localeHint = `${answer || ''} ${fallbacks.join(' ')}`;
   const backupLabels = getBackupLabelsByLocale(localeHint);
 
   while (distractors.length < 2) {
-    distractors.push(backupLabels[distractors.length] || backupLabels[backupLabels.length - 1]);
+    const backupCandidate = backupLabels[distractors.length] || backupLabels[backupLabels.length - 1];
+    if (!isTooSimilar(backupCandidate, answer)) {
+      distractors.push(backupCandidate);
+    } else {
+      distractors.push(`${backupCandidate} ${distractors.length + 1}`);
+    }
   }
 
   return shuffle([answer, distractors[0], distractors[1]]);
@@ -332,10 +381,18 @@ const generateQuestionsFromText = (text) => {
   const firstFrAnswer = frPreferredConcepts[0] || allPreferredConcepts[0] || title;
   const secondFrAnswer = frPreferredConcepts[1] || allPreferredConcepts[1] || DEFAULT_CONCEPT_FALLBACKS.fr[0];
   const thirdFrAnswer = frPreferredConcepts[2] || allPreferredConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.fr[1];
-
+  const fourthFrAnswer = frPreferredConcepts[3] || allPreferredConcepts[3] || DEFAULT_CONCEPT_FALLBACKS.fr[0];
   const firstDarijaAnswer = darijaPreferredConcepts[0] || allPreferredConcepts[0] || title;
   const secondDarijaAnswer = darijaPreferredConcepts[1] || allPreferredConcepts[1] || DEFAULT_CONCEPT_FALLBACKS.darija[0];
   const thirdDarijaAnswer = darijaPreferredConcepts[2] || allPreferredConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.darija[1];
+  const fourthDarijaAnswer = darijaPreferredConcepts[3] || allPreferredConcepts[3] || DEFAULT_CONCEPT_FALLBACKS.darija[0];
+
+  const introFrSnippet = frSentences[0]
+    ? `${frSentences[0].slice(0, 88)}${frSentences[0].length > 88 ? '...' : ''}`
+    : firstFrAnswer;
+  const introDarijaSnippet = darijaSentences[0]
+    ? `${darijaSentences[0].slice(0, 88)}${darijaSentences[0].length > 88 ? '...' : ''}`
+    : firstDarijaAnswer;
 
   const frFallbacks = ['thème secondaire', 'information hors sujet'];
   const enFallbacks = ['secondary theme', 'off-topic information'];
@@ -355,13 +412,14 @@ const generateQuestionsFromText = (text) => {
       optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2 }),
       correctAnswer: firstDarijaAnswer,
       options: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2 }),
-      xpReward: 20,
+      xpReward: 25,
+      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
     },
     {
       _id: `q_${text?._id || 'doc'}_2`,
-      questionTextFr: `Quel concept important apparaît dans "${title}" ?`,
-      questionTextEn: `What key concept appears in "${title}"?`,
-      questionTextDarija: `شنو من مفهوم بان مهم فالنص "${title}"؟`,
+      questionTextFr: `Quel concept important est expliqué dans "${title}" ?`,
+      questionTextEn: `Which key concept is explained in "${title}"?`,
+      questionTextDarija: `شنو من مفهوم مهم متشرح فالنص "${title}"؟`,
       correctAnswerFr: secondFrAnswer,
       correctAnswerEn: secondFrAnswer,
       correctAnswerDarija: secondDarijaAnswer,
@@ -370,19 +428,14 @@ const generateQuestionsFromText = (text) => {
       optionsDarija: buildFallbackOptions(secondDarijaAnswer, darijaPreferredConcepts.slice().reverse(), darijaFallbacks, { minWordCount: 2 }),
       correctAnswer: secondDarijaAnswer,
       options: buildFallbackOptions(secondDarijaAnswer, darijaPreferredConcepts.slice().reverse(), darijaFallbacks, { minWordCount: 2 }),
-      xpReward: 20,
+      xpReward: 25,
+      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
     },
     {
       _id: `q_${text?._id || 'doc'}_3`,
-      questionTextFr: frSentences[0]
-        ? `Quelle idée comprend-on de ce passage : "${frSentences[0].slice(0, 44)}..." ?`
-        : `Quelle est l'idée principale de ce document ?`,
-      questionTextEn: frSentences[0]
-        ? `What idea do you get from this passage: "${frSentences[0].slice(0, 44)}..."?`
-        : `What is the main idea of this document?`,
-      questionTextDarija: darijaSentences[0]
-        ? `شنو الفكرة اللي كتفهم من هاد الجزء: "${darijaSentences[0].slice(0, 44)}..."؟`
-        : `شنو الفكرة الرئيسية فهاد الوثيقة؟`,
+      questionTextFr: `Quelle reformulation respecte ce passage : "${introFrSnippet}" ?`,
+      questionTextEn: `Which rephrasing matches this passage: "${introFrSnippet}"?`,
+      questionTextDarija: `شنو الصياغة اللي كتبقى وفية لهاد المقطع: "${introDarijaSnippet}"؟`,
       correctAnswerFr: thirdFrAnswer,
       correctAnswerEn: thirdFrAnswer,
       correctAnswerDarija: thirdDarijaAnswer,
@@ -392,14 +445,291 @@ const generateQuestionsFromText = (text) => {
       correctAnswer: thirdDarijaAnswer,
       options: buildFallbackOptions(thirdDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2 }),
       xpReward: 30,
+      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
     },
-  ];
+    {
+      _id: `q_${text?._id || 'doc'}_4`,
+      questionTextFr: `Pourquoi ce document est-il utile à lire ?`,
+      questionTextEn: `Why is this document useful to read?`,
+      questionTextDarija: `علاش هاد الوثيقة مفيدة للقراية؟`,
+      correctAnswerFr: fourthFrAnswer,
+      correctAnswerEn: fourthFrAnswer,
+      correctAnswerDarija: fourthDarijaAnswer,
+      optionsFr: buildFallbackOptions(fourthFrAnswer, frPreferredConcepts, ['opinion sans lien', 'thème complètement différent'], { minWordCount: 2 }),
+      optionsEn: buildFallbackOptions(fourthFrAnswer, frPreferredConcepts, ['unrelated opinion', 'completely different theme'], { minWordCount: 2 }),
+      optionsDarija: buildFallbackOptions(fourthDarijaAnswer, darijaPreferredConcepts, ['رأي بلا علاقة', 'موضوع مختلف بزاف'], { minWordCount: 2 }),
+      correctAnswer: fourthDarijaAnswer,
+      options: buildFallbackOptions(fourthDarijaAnswer, darijaPreferredConcepts, ['رأي بلا علاقة', 'موضوع مختلف بزاف'], { minWordCount: 2 }),
+      xpReward: 30,
+      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
+    },
+    {
+      _id: `q_${text?._id || 'doc'}_5`,
+      questionTextFr: `Quelle affirmation correspond le mieux au document ?`,
+      questionTextEn: `Which statement best matches the document?`,
+      questionTextDarija: `شنو الجملة اللي كتناسب هاد الوثيقة أكثر؟`,
+      correctAnswerFr: firstFrAnswer,
+      correctAnswerEn: firstFrAnswer,
+      correctAnswerDarija: firstDarijaAnswer,
+      optionsFr: buildFallbackOptions(firstFrAnswer, frPreferredConcepts, ['idée inventée', 'information non mentionnée'], { minWordCount: 2 }),
+      optionsEn: buildFallbackOptions(firstFrAnswer, frPreferredConcepts, ['invented idea', 'not mentioned information'], { minWordCount: 2 }),
+      optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, ['فكرة مخترعة', 'معلومة ما جا ذكرهاش'], { minWordCount: 2 }),
+      correctAnswer: firstDarijaAnswer,
+      options: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, ['فكرة مخترعة', 'معلومة ما جا ذكرهاش'], { minWordCount: 2 }),
+      xpReward: 35,
+      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
+    },
+  ].slice(0, QUIZ_TARGET_COUNT);
 };
 
-const isWeakOptionSet = (options = []) =>
-  !Array.isArray(options) ||
-  options.length < 3 ||
-  options.filter((option) => countWords(String(option || '')) < MIN_QUALITY_WORD_COUNT).length > MAX_SINGLE_WORD_OPTIONS;
+const parseJsonArray = (value = '') => {
+  const cleaned = value.replace(/```json|```/gi, '').trim();
+  const match = cleaned.match(/\[[\s\S]*\]/);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(match[0]);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeAiQuestion = (rawQuestion, index, textId = 'doc') => {
+  const normalizedOptions = dedupeCaseInsensitive(
+    (Array.isArray(rawQuestion?.optionsFr) ? rawQuestion.optionsFr : rawQuestion?.options || [])
+      .map((option) => String(option || '').trim())
+      .filter(Boolean),
+  );
+
+  const normalizedOptionsDarija = dedupeCaseInsensitive(
+    (Array.isArray(rawQuestion?.optionsDarija) ? rawQuestion.optionsDarija : rawQuestion?.options || [])
+      .map((option) => String(option || '').trim())
+      .filter(Boolean),
+  );
+
+  const fallbackFr = ['information secondaire', 'idée sans lien'];
+  const fallbackEn = ['secondary information', 'off-topic idea'];
+  const fallbackDarija = ['معلومة ثانوية', 'فكرة بلا علاقة'];
+
+  const baseFrOptions =
+    normalizedOptions.length >= 3
+      ? normalizedOptions.slice(0, 3)
+      : buildFallbackOptions(
+          String(rawQuestion?.correctAnswerFr || normalizedOptions[0] || rawQuestion?.correctAnswer || '').trim(),
+          normalizedOptions,
+          fallbackFr,
+          { minWordCount: 2 },
+        );
+
+  const baseDarijaOptions =
+    normalizedOptionsDarija.length >= 3
+      ? normalizedOptionsDarija.slice(0, 3)
+      : buildFallbackOptions(
+          String(rawQuestion?.correctAnswerDarija || normalizedOptionsDarija[0] || rawQuestion?.correctAnswer || '').trim(),
+          normalizedOptionsDarija,
+          fallbackDarija,
+          { minWordCount: 2 },
+        );
+
+  const baseEnOptions =
+    dedupeCaseInsensitive(
+      (Array.isArray(rawQuestion?.optionsEn) ? rawQuestion.optionsEn : [])
+        .map((option) => String(option || '').trim())
+        .filter(Boolean),
+    ).slice(0, 3).length === 3
+      ? dedupeCaseInsensitive(
+          (Array.isArray(rawQuestion?.optionsEn) ? rawQuestion.optionsEn : [])
+            .map((option) => String(option || '').trim())
+            .filter(Boolean),
+        ).slice(0, 3)
+      : buildFallbackOptions(
+          String(rawQuestion?.correctAnswerEn || baseFrOptions[0]).trim(),
+          baseFrOptions,
+          fallbackEn,
+          { minWordCount: 2 },
+        );
+
+  const getCorrect = (options, directAnswer) => {
+    const indexFromText = options.findIndex((option) => normalizeToken(option) === normalizeToken(directAnswer));
+    const indexFromRaw = Number.isInteger(rawQuestion?.correctIndex) ? rawQuestion.correctIndex : -1;
+    const index =
+      indexFromText >= 0
+        ? indexFromText
+        : indexFromRaw >= 0 && indexFromRaw < options.length
+          ? indexFromRaw
+          : 0;
+    return options[index];
+  };
+
+  const correctFr = getCorrect(baseFrOptions, rawQuestion?.correctAnswerFr || rawQuestion?.correctAnswer);
+  const correctEn = getCorrect(baseEnOptions, rawQuestion?.correctAnswerEn || rawQuestion?.correctAnswer || correctFr);
+  const correctDarija = getCorrect(baseDarijaOptions, rawQuestion?.correctAnswerDarija || rawQuestion?.correctAnswer || correctFr);
+
+  return {
+    _id: rawQuestion?._id || `q_${textId}_${index + 1}`,
+    questionTextFr: String(rawQuestion?.questionTextFr || rawQuestion?.questionFr || rawQuestion?.question || '').trim(),
+    questionTextEn: String(rawQuestion?.questionTextEn || rawQuestion?.questionEn || rawQuestion?.question || '').trim(),
+    questionTextDarija: String(rawQuestion?.questionTextDarija || rawQuestion?.questionDarija || rawQuestion?.question || '').trim(),
+    correctAnswerFr: correctFr,
+    correctAnswerEn: correctEn,
+    correctAnswerDarija: correctDarija,
+    optionsFr: baseFrOptions,
+    optionsEn: baseEnOptions,
+    optionsDarija: baseDarijaOptions,
+    correctAnswer: correctDarija,
+    options: baseDarijaOptions,
+    xpReward: Number.isFinite(rawQuestion?.xpReward) ? rawQuestion.xpReward : 30,
+    engineVersion: QUIZ_ENGINE_VERSION,
+  };
+};
+
+const generateQuestionsWithAI = async (text) => {
+  if (!GEMINI_QUIZ_ENDPOINT) {
+    return null;
+  }
+
+  const originalText = text?.originalText?.trim() || text?.original_text?.trim() || '';
+  const darijaText = text?.darijaText?.trim() || text?.darija_text?.trim() || '';
+  const title = text?.title?.trim() || 'document';
+  const combinedText = `${originalText}\n${darijaText}`.trim().slice(0, MAX_AI_SOURCE_LENGTH);
+
+  if (!combinedText || countWords(combinedText) < 40) {
+    return null;
+  }
+
+  const prompt = `Create exactly ${QUIZ_TARGET_COUNT} high-quality multiple-choice quiz questions based on this uploaded text.
+
+Title: ${title}
+Text:
+${combinedText}
+
+Return JSON array only. No markdown.
+Each item must follow this schema:
+{
+  "questionTextFr": "...",
+  "questionTextEn": "...",
+  "questionTextDarija": "...",
+  "optionsFr": ["A", "B", "C"],
+  "optionsEn": ["A", "B", "C"],
+  "optionsDarija": ["A", "B", "C"],
+  "correctIndex": 0,
+  "xpReward": 30
+}
+
+Rules:
+- Exactly 3 options per language.
+- Questions must test comprehension, details, and inference from the text.
+- Distractors must be plausible but clearly wrong.
+- Do not generate options that are just re-ordered words from the same phrase.
+- Keep options concise but meaningful (at least 2 words).
+- correctIndex must point to the right option in each options array.`;
+
+  try {
+    const response = await fetch(GEMINI_QUIZ_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.35,
+          topP: 0.9,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = await response.json();
+    const responseText = payload?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!responseText) {
+      return null;
+    }
+
+    const parsed = parseJsonArray(responseText);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return null;
+    }
+
+    const normalized = parsed
+      .slice(0, QUIZ_TARGET_COUNT)
+      .map((item, index) => normalizeAiQuestion(item, index, text?._id || text?.id || 'doc'))
+      .filter((question) => question.questionTextFr || question.questionTextDarija);
+
+    if (normalized.length < 3 || isLowQualityGeneratedQuiz(normalized)) {
+      return null;
+    }
+
+    return normalized;
+  } catch {
+    return null;
+  }
+};
+
+const getOptionSimilarity = (a = '', b = '') => {
+  const aTokens = new Set(
+    normalizeToken(a)
+      .split(/\s+/)
+      .filter((token) => token.length > 2),
+  );
+  const bTokens = new Set(
+    normalizeToken(b)
+      .split(/\s+/)
+      .filter((token) => token.length > 2),
+  );
+
+  if (aTokens.size === 0 || bTokens.size === 0) {
+    return 0;
+  }
+
+  let overlap = 0;
+  aTokens.forEach((token) => {
+    if (bTokens.has(token)) {
+      overlap += 1;
+    }
+  });
+
+  return overlap / Math.max(aTokens.size, bTokens.size);
+};
+
+const isWeakOptionSet = (options = []) => {
+  if (!Array.isArray(options) || options.length < 3) {
+    return true;
+  }
+
+  const normalized = options
+    .map((option) => String(option || '').trim())
+    .filter(Boolean);
+
+  if (normalized.length < 3) {
+    return true;
+  }
+
+  if (dedupeCaseInsensitive(normalized).length < 3) {
+    return true;
+  }
+
+  const tooManyOneWord =
+    normalized.filter((option) => countWords(option) < MIN_QUALITY_WORD_COUNT).length > MAX_SINGLE_WORD_OPTIONS;
+  if (tooManyOneWord) {
+    return true;
+  }
+
+  for (let i = 0; i < normalized.length; i += 1) {
+    for (let j = i + 1; j < normalized.length; j += 1) {
+      if (getOptionSimilarity(normalized[i], normalized[j]) >= 0.72) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
 
 const isLowQualityGeneratedQuiz = (questions = []) =>
   !Array.isArray(questions) ||
@@ -414,12 +744,34 @@ const isLowQualityGeneratedQuiz = (questions = []) =>
     return weakAnswer || weakOptions;
   });
 
+const needsQuestionRefresh = (questions = []) =>
+  !Array.isArray(questions) ||
+  questions.length === 0 ||
+  isLowQualityGeneratedQuiz(questions) ||
+  questions.some((question) => question?.engineVersion !== QUIZ_ENGINE_VERSION && question?.engineVersion !== QUIZ_FALLBACK_ENGINE_VERSION);
+
 const ensureHighQualityQuestions = (text, existingQuestions = []) => {
-  if (!Array.isArray(existingQuestions) || existingQuestions.length === 0 || isLowQualityGeneratedQuiz(existingQuestions)) {
+  const hasOldEngine = existingQuestions.some(
+    (q) => q?.engineVersion !== QUIZ_ENGINE_VERSION && q?.engineVersion !== QUIZ_FALLBACK_ENGINE_VERSION
+  );
+  if (!Array.isArray(existingQuestions) || existingQuestions.length === 0 || isLowQualityGeneratedQuiz(existingQuestions) || hasOldEngine) {
     return generateQuestionsFromText(text);
   }
 
   return existingQuestions;
+};
+
+const generateSmartQuestionsForText = async (text, existingQuestions = []) => {
+  if (!needsQuestionRefresh(existingQuestions)) {
+    return existingQuestions;
+  }
+
+  const aiQuestions = await generateQuestionsWithAI(text);
+  if (Array.isArray(aiQuestions) && aiQuestions.length > 0 && !isLowQualityGeneratedQuiz(aiQuestions)) {
+    return aiQuestions;
+  }
+
+  return ensureHighQualityQuestions(text, existingQuestions);
 };
 
 const buildDefaultQuiz = () => [
@@ -832,6 +1184,7 @@ const buildJourney = (user) => {
   const stageIndex = getStageIndex(currentLevel);
 
   return {
+    xpPerLevel: XP_PER_LEVEL,
     currentLevel,
     stageIndex,
     levelName: getLevelName(currentLevel),
@@ -1261,11 +1614,8 @@ const mockHandlers = {
       return buildDefaultQuiz();
     }
 
-    const refreshedQuestions = ensureHighQualityQuestions(text, text.generatedQuestions);
-    const shouldPersist =
-      !Array.isArray(text.generatedQuestions) ||
-      text.generatedQuestions.length === 0 ||
-      isLowQualityGeneratedQuiz(text.generatedQuestions);
+    const refreshedQuestions = await generateSmartQuestionsForText(text, text.generatedQuestions);
+    const shouldPersist = needsQuestionRefresh(text.generatedQuestions);
 
     if (shouldPersist) {
       text.generatedQuestions = refreshedQuestions;
@@ -1530,6 +1880,27 @@ export const apiClient = {
         const user = await getSupabaseProfile();
         const texts = await getSupabaseTexts();
         const nextXp = (user.xp || 0) + xpAmount;
+
+        const today = new Date().toDateString();
+        const lastActiveDate = user.stats?.lastActiveDate;
+        let currentStreak = user.stats?.currentStreak || 0;
+        if (!lastActiveDate) {
+          currentStreak = 1;
+        } else if (lastActiveDate === today) {
+          currentStreak = Math.max(currentStreak, 1);
+        } else {
+          const prevDay = new Date();
+          prevDay.setDate(prevDay.getDate() - 1);
+          const prevDayString = prevDay.toDateString();
+          currentStreak = lastActiveDate === prevDayString ? currentStreak + 1 : 1;
+        }
+        const bestStreak = Math.max(user.stats?.bestStreak || 0, currentStreak);
+
+        const completedTextIds = [...(user.stats?.completedTextIds || [])];
+        if (metadata.quizCompleted && metadata.textId && !completedTextIds.includes(metadata.textId)) {
+          completedTextIds.push(metadata.textId);
+        }
+
         const updatedUser = applyAchievements(
           {
             ...user,
@@ -1539,10 +1910,13 @@ export const apiClient = {
             stats: {
               ...(user.stats || {}),
               quizzesPassed: (user.stats?.quizzesPassed || 0) + (metadata.quizCompleted ? 1 : 0),
-              bestStreak: Math.max((user.stats?.bestStreak || 0) + 1, 1),
+              bestStreak,
+              currentStreak,
+              lastActiveDate: today,
               perfectQuizzes:
                 (user.stats?.perfectQuizzes || 0) +
                 (metadata.quizCompleted && metadata.totalQuestions > 0 && metadata.correctAnswers === metadata.totalQuestions ? 1 : 0),
+              completedTextIds,
             },
           },
           texts,
@@ -1713,10 +2087,10 @@ export const apiClient = {
         }
 
         const existingQuestions = Array.isArray(record.generated_questions) ? record.generated_questions : [];
-        const needsRefresh = existingQuestions.length === 0 || isLowQualityGeneratedQuiz(existingQuestions);
+        const needsRefresh = needsQuestionRefresh(existingQuestions);
 
         if (needsRefresh) {
-          const refreshed = generateQuestionsFromText(normalizeTextRecord(record));
+          const refreshed = await generateSmartQuestionsForText(normalizeTextRecord(record), existingQuestions);
           try {
             await supabaseRestRequest(`/texts?id=eq.${textId}&select=*`, {
               method: 'PATCH',

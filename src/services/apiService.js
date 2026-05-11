@@ -372,112 +372,13 @@ const buildFallbackOptions = (
 };
 
 const generateBestQuestionsForText = async (text) => {
-  // Try AI-generated questions first (most relevant and accurate)
-  const aiQuestions = await generateQuestionsWithAI(text);
-  if (Array.isArray(aiQuestions) && aiQuestions.length > 0 && !isLowQualityGeneratedQuiz(aiQuestions)) {
-    return aiQuestions;
-  }
-
-  return generateQuestionsFromText(text);
+  // Quiz module has been deactivated. Returning empty array for now.
+  return [];
 };
 
-// Fonction de génération de questions supprimée (quiz)
-  const thirdDarijaAnswer = darijaPreferredConcepts[2] || DEFAULT_CONCEPT_FALLBACKS.darija[1];
-  const fourthDarijaAnswer = darijaPreferredConcepts[3] || DEFAULT_CONCEPT_FALLBACKS.darija[0];
-
-  const introFrSnippet = frSentences[0]
-    ? `${frSentences[0].slice(0, 88)}${frSentences[0].length > 88 ? '...' : ''}`
-    : firstFrAnswer;
-  const introDarijaSnippet = darijaSentences[0]
-    ? `${darijaSentences[0].slice(0, 88)}${darijaSentences[0].length > 88 ? '...' : ''}`
-    : firstDarijaAnswer;
-
-  const frFallbacks = ['thème secondaire', 'information hors sujet'];
-  const enFallbacks = ['secondary theme', 'off-topic information'];
-  const darijaFallbacks = ['موضوع ثانوي', 'معلومة خارج السياق'];
-
-  return [
-    {
-      _id: `q_${text?._id || 'doc'}_1`,
-      questionTextFr: `De quoi parle principalement "${title}" ?`,
-      questionTextEn: `What is "${title}" mainly about?`,
-      questionTextDarija: `ما هو الموضوع الرئيسي في "${title}"؟`,
-      correctAnswerFr: firstFrAnswer,
-      correctAnswerEn: firstEnAnswer,
-      correctAnswerDarija: firstDarijaAnswer,
-      optionsFr: buildFallbackOptions(firstFrAnswer, frPreferredConcepts, frFallbacks, { minWordCount: 2, locale: 'fr' }),
-      optionsEn: buildFallbackOptions(firstEnAnswer, enPreferredConcepts, enFallbacks, { minWordCount: 2, locale: 'en' }),
-      optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2, locale: 'darija' }),
-      correctAnswer: firstDarijaAnswer,
-      options: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2, locale: 'darija' }),
-      xpReward: 25,
-      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
-    },
-    {
-      _id: `q_${text?._id || 'doc'}_2`,
-      questionTextFr: `Quel concept important est expliqué dans "${title}" ?`,
-      questionTextEn: `Which key concept is explained in "${title}"?`,
-      questionTextDarija: `شنو من مفهوم مهم متشرح فالنص "${title}"؟`,
-      correctAnswerFr: secondFrAnswer,
-      correctAnswerEn: secondEnAnswer,
-      correctAnswerDarija: secondDarijaAnswer,
-      optionsFr: buildFallbackOptions(secondFrAnswer, frPreferredConcepts.slice().reverse(), frFallbacks, { minWordCount: 2, locale: 'fr' }),
-      optionsEn: buildFallbackOptions(secondEnAnswer, enPreferredConcepts.slice().reverse(), enFallbacks, { minWordCount: 2, locale: 'en' }),
-      optionsDarija: buildFallbackOptions(secondDarijaAnswer, darijaPreferredConcepts.slice().reverse(), darijaFallbacks, { minWordCount: 2, locale: 'darija' }),
-      correctAnswer: secondDarijaAnswer,
-      options: buildFallbackOptions(secondDarijaAnswer, darijaPreferredConcepts.slice().reverse(), darijaFallbacks, { minWordCount: 2, locale: 'darija' }),
-      xpReward: 25,
-      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
-    },
-    {
-      _id: `q_${text?._id || 'doc'}_3`,
-      questionTextFr: `Quelle reformulation respecte ce passage : "${introFrSnippet}" ?`,
-      questionTextEn: `Which rephrasing matches this passage: "${introFrSnippet}"?`,
-      questionTextDarija: `شنو الصياغة اللي كتبقى وفية لهاد المقطع: "${introDarijaSnippet}"؟`,
-      correctAnswerFr: thirdFrAnswer,
-      correctAnswerEn: thirdEnAnswer,
-      correctAnswerDarija: thirdDarijaAnswer,
-      optionsFr: buildFallbackOptions(thirdFrAnswer, frPreferredConcepts, frFallbacks, { minWordCount: 2, locale: 'fr' }),
-      optionsEn: buildFallbackOptions(thirdEnAnswer, enPreferredConcepts, enFallbacks, { minWordCount: 2, locale: 'en' }),
-      optionsDarija: buildFallbackOptions(thirdDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2, locale: 'darija' }),
-      correctAnswer: thirdDarijaAnswer,
-      options: buildFallbackOptions(thirdDarijaAnswer, darijaPreferredConcepts, darijaFallbacks, { minWordCount: 2, locale: 'darija' }),
-      xpReward: 30,
-      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
-    },
-    {
-      _id: `q_${text?._id || 'doc'}_4`,
-      questionTextFr: `Pourquoi "${title}" est-il/elle utile à lire ?`,
-      questionTextEn: `Why is "${title}" useful to read?`,
-      questionTextDarija: `علاش قراية "${title}" مفيدة؟`,
-      correctAnswerFr: fourthFrAnswer,
-      correctAnswerEn: fourthEnAnswer,
-      correctAnswerDarija: fourthDarijaAnswer,
-      optionsFr: buildFallbackOptions(fourthFrAnswer, frPreferredConcepts, ['opinion sans lien', 'thème complètement différent'], { minWordCount: 2, locale: 'fr' }),
-      optionsEn: buildFallbackOptions(fourthEnAnswer, enPreferredConcepts, ['unrelated opinion', 'completely different theme'], { minWordCount: 2, locale: 'en' }),
-      optionsDarija: buildFallbackOptions(fourthDarijaAnswer, darijaPreferredConcepts, ['رأي بلا علاقة', 'موضوع مختلف بزاف'], { minWordCount: 2, locale: 'darija' }),
-      correctAnswer: fourthDarijaAnswer,
-      options: buildFallbackOptions(fourthDarijaAnswer, darijaPreferredConcepts, ['رأي بلا علاقة', 'موضوع مختلف بزاف'], { minWordCount: 2, locale: 'darija' }),
-      xpReward: 30,
-      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
-    },
-    {
-      _id: `q_${text?._id || 'doc'}_5`,
-      questionTextFr: `Quelle affirmation correspond le mieux à "${title}" ?`,
-      questionTextEn: `Which statement best matches "${title}"?`,
-      questionTextDarija: `شنو الجملة اللي كتناسب "${title}" أكثر؟`,
-      correctAnswerFr: firstFrAnswer,
-      correctAnswerEn: firstEnAnswer,
-      correctAnswerDarija: firstDarijaAnswer,
-      optionsFr: buildFallbackOptions(firstFrAnswer, frPreferredConcepts, ['idée inventée', 'information non mentionnée'], { minWordCount: 2, locale: 'fr' }),
-      optionsEn: buildFallbackOptions(firstEnAnswer, enPreferredConcepts, ['invented idea', 'not mentioned information'], { minWordCount: 2, locale: 'en' }),
-      optionsDarija: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, ['فكرة مخترعة', 'معلومة ما جا ذكرهاش'], { minWordCount: 2, locale: 'darija' }),
-      correctAnswer: firstDarijaAnswer,
-      options: buildFallbackOptions(firstDarijaAnswer, darijaPreferredConcepts, ['فكرة مخترعة', 'معلومة ما جا ذكرهاش'], { minWordCount: 2, locale: 'darija' }),
-      xpReward: 35,
-      engineVersion: QUIZ_FALLBACK_ENGINE_VERSION,
-    },
-  ].slice(0, QUIZ_TARGET_COUNT);
+const generateQuestionsFromText = (text) => {
+  // Quiz module has been deactivated.
+  return [];
 };
 
 const parseJsonArray = (value = '') => {

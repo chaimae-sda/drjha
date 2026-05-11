@@ -806,69 +806,16 @@ const ensureHighQualityQuestions = (text, existingQuestions = []) => {
 };
 
 const generateSmartQuestionsForText = async (text, existingQuestions = []) => {
-  // If we already have high-quality questions, use them immediately (fast)
-  const validExisting = ensureHighQualityQuestions(text, existingQuestions);
-  if (validExisting.length > 0) {
-    return validExisting;
-  }
-
-  // Otherwise try to generate/refresh with AI
+  // Always use AI to generate questions. No fallback, no mock, no default.
   const aiQuestions = await generateQuestionsWithAI(text);
   if (Array.isArray(aiQuestions) && aiQuestions.length > 0 && !isLowQualityGeneratedQuiz(aiQuestions)) {
     return aiQuestions;
   }
-
-  // Fallback to extraction-based questions so the text remains playable
-  return generateQuestionsFromText(text);
+  // If AI fails, return empty array (no fallback)
+  return [];
 };
 
-const buildDefaultQuiz = () => [
-  {
-    _id: 'q1',
-    questionTextFr: "Que fait l'intelligence artificielle selon le texte?",
-    questionTextEn: 'What does artificial intelligence do according to the text?',
-    questionTextDarija: 'الذكاء الاصطناعي كيعاون على شنو؟',
-    correctAnswerFr: "Analyser des données",
-    correctAnswerEn: 'Analyse data',
-    correctAnswerDarija: 'تحليل البيانات',
-    optionsFr: ["Analyser des données", "Jouer à l'école", "Dormir beaucoup"],
-    optionsEn: ['Analyse data', 'Play at school', 'Sleep a lot'],
-    optionsDarija: ['تحليل البيانات', 'اللعب فالمدرسة', 'النوم الكثير'],
-    correctAnswer: 'تحليل البيانات',
-    options: ['تحليل البيانات', 'اللعب فالمدرسة', 'النوم الكثير'],
-    xpReward: 20,
-  },
-  {
-    _id: 'q2',
-    questionTextFr: "Quel est le résultat de l'utilisation de l'IA?",
-    questionTextEn: 'What is the result of using AI?',
-    questionTextDarija: 'شنو النتيجة ديال استعمال الذكاء الاصطناعي؟',
-    correctAnswerFr: 'De meilleures décisions',
-    correctAnswerEn: 'Better decisions',
-    correctAnswerDarija: 'قرارات احسن',
-    optionsFr: ['Perte de temps', 'De meilleures décisions', 'Oublier les cours'],
-    optionsEn: ['Waste of time', 'Better decisions', 'Forgetting lessons'],
-    optionsDarija: ['ضياع الوقت', 'قرارات احسن', 'نسيان الدروس'],
-    correctAnswer: 'قرارات احسن',
-    options: ['ضياع الوقت', 'قرارات احسن', 'نسيان الدروس'],
-    xpReward: 20,
-  },
-  {
-    _id: 'q3',
-    questionTextFr: 'Cet article est-il utile pour apprendre?',
-    questionTextEn: 'Is this article useful for learning?',
-    questionTextDarija: 'واش هاد الموضوع مفيد للتعلم؟',
-    correctAnswerFr: 'Oui, il contient des informations',
-    correctAnswerEn: 'Yes, it contains information',
-    correctAnswerDarija: 'نعم، فيه معلومات',
-    optionsFr: ['Non, juste du divertissement', 'Oui, il contient des informations', 'Je ne sais pas'],
-    optionsEn: ["No, it's just entertainment", 'Yes, it contains information', "I don't know"],
-    optionsDarija: ['لا، غير تفلية', 'نعم، فيه معلومات', 'ما عرفتش'],
-    correctAnswer: 'نعم، فيه معلومات',
-    options: ['لا، غير تفلية', 'نعم، فيه معلومات', 'ما عرفتش'],
-    xpReward: 30,
-  },
-];
+
 
 const normalizeStats = (stats = {}) => ({
   readingTime: stats.readingTime || 0,
@@ -1239,44 +1186,7 @@ const upsertSupabaseProfile = async (updates) => {
   return { user: nextUser };
 };
 
-const mockHandlers = {
-  register: async ({ username, email, password }) => {
-    const db = loadMockDb();
-    if (db.users.some((user) => user.email.toLowerCase() === email.toLowerCase())) {
-      return { error: 'Un compte existe deja avec cet email.' };
-    }
-
-    const newUser = normalizeUser({
-      id: `user_${Date.now()}`,
-      username,
-      email,
-      password,
-      level: 1,
-      levelName: getLevelName(1),
-      xp: 0,
-      booksRead: 0,
-      badges: [],
-      stats: { readingTime: 0, quizzesPassed: 0, bestStreak: 0, pagesRead: 0, importedCount: 0, scannedCount: 0, perfectQuizzes: 0, audioSessions: 0 },
-    });
-
-    db.users.push({ ...newUser, password });
-    saveMockDb(db);
-    persistSession({
-      accessToken: `mock-token-${newUser.id}`,
-      refreshToken: `mock-refresh-${newUser.id}`,
-      user: newUser,
-    });
-
-    return { token: getAccessToken(), user: newUser };
-  },
-
-  login: async ({ email, password }) => {
-    const db = loadMockDb();
-    const found = db.users.find((user) => user.email.toLowerCase() === email.toLowerCase());
-
-    if (!found || found.password !== password) {
-      return { error: 'Email ou mot de passe incorrect.' };
-    }
+// ...existing code...
 
     const user = normalizeUser(found);
     persistSession({
@@ -1580,19 +1490,7 @@ const mockHandlers = {
   }),
 };
 
-const withFallback = async (primary, fallback) => {
-  if (isSupabaseConfigured()) {
-    try {
-      return await primary();
-    } catch (error) {
-      console.warn('Supabase request failed, falling back to mock:', error);
-      if (fallback) return fallback();
-      return { error: error.message || 'Network error' };
-    }
-  }
 
-  return fallback ? fallback() : { error: 'Service unavailable' };
-};
 
 const loginWithSupabase = async (email, password) => {
   const data = await supabaseAuthRequest('/token?grant_type=password', {

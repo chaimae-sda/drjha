@@ -4,40 +4,7 @@ import { isSupabaseConnected } from '../config/supabase.js';
 
 const router = express.Router();
 
-// Fallback in-memory auth when Supabase is not connected
-const fallbackUsers = new Map();
-
-/**
- * Register new user
- */
-router.post('/register', async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'All fields required' });
-    }
-
-    // Check if Supabase is connected
-    if (!isSupabaseConnected()) {
-      // Fallback: in-memory storage
-      if (fallbackUsers.has(email)) {
-        return res.status(400).json({ error: 'User already exists' });
-      }
-
-      const userId = `user_${Date.now()}`;
-      const user = {
-        _id: userId,
-        username,
-        email,
-        password, // Note: NOT hashed in fallback
-        avatar: '👧',
-        level: 1,
-        xp: 0,
-        badges: [],
-        stats: {
-          readingTime: 0,
-          quizzesPassed: 0,
+// ...existing code...
           bestStreak: 0
         }
       };

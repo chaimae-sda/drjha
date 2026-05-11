@@ -98,52 +98,7 @@ Rules:
   }
 };
 
-// Fallback: Basic extraction of important content
-const extractTextStructure = (text) => {
-  // Get sentences
-  const sentences = text
-    .split(/[.!?]+/)
-    .map(s => s.trim())
-    .filter(s => s.length > 15)
-    .slice(0, 15);
 
-  // Get all significant words and phrases
-  const allWords = text
-    .toLowerCase()
-    .split(/[\s.,!?;:—-]+/)
-    .filter(w => w.length > 3 && w.length < 25)
-    .filter(w => !/^(the|and|that|this|from|with|for|are|was|were|have|has|been|about|which)$/.test(w));
-
-  // Find key multi-word phrases (2-3 words)
-  const multiWordPhrases = [];
-  for (let i = 0; i < sentences.length; i++) {
-    const words = sentences[i].split(/\s+/).filter(w => w.length > 3);
-    for (let j = 0; j < words.length - 1; j++) {
-      const phrase = words.slice(j, Math.min(j + 2, words.length)).join(' ');
-      if (phrase.length > 5 && phrase.length < 40) {
-        multiWordPhrases.push(phrase);
-      }
-    }
-  }
-
-  // Frequency analysis
-  const wordFreq = {};
-  allWords.forEach(w => {
-    wordFreq[w] = (wordFreq[w] || 0) + 1;
-  });
-
-  const topWords = Object.entries(wordFreq)
-    .sort(([, a], [, b]) => b - a)
-    .slice(0, 10)
-    .map(([w]) => w);
-
-  return { sentences, topWords, multiWordPhrases };
-};
-
-// Fallback generation removed - only use AI
-const generateBasicQuestions = (text) => {
-  return null;
-};
 
 /**
  * Main quiz service export
@@ -162,7 +117,7 @@ export const quizService = {
       return null;
     }
 
-    // Try AI first if available
+    // Only use AI for quiz generation
     if (useAI && apiKey) {
       console.log('Attempting AI-powered quiz generation...');
       const aiQuestions = await generateWithAI(text, apiKey);
@@ -175,19 +130,11 @@ export const quizService = {
           questions: aiQuestions
         };
       }
-      console.warn('AI generation returned insufficient questions, falling back to basic');
+      console.warn('AI generation returned insufficient questions. No fallback.');
     }
 
-    // Fallback to basic extraction
-    console.log('Using extraction-based quiz generation...');
-    const questions = generateBasicQuestions(text);
-
-    if (!questions || questions.length === 0) {
-      console.warn('Could not generate basic questions');
-      return null;
-    }
-
-    return null; // Force null instead of mocked basic questions
+    // No fallback, return null if AI fails
+    return null;
   },
 
   getQuizMetadata: (quiz) => {

@@ -1,9 +1,11 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { BookOpen, Camera, Clock3, LogOut, Shield, Sparkles, Star, Trophy, TrendingUp } from 'lucide-react';
+import { BookOpen, Camera, Clock3, LogOut, Shield, Sparkles, Star, Trophy, TrendingUp, Settings } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import ThemeToggle from '../components/ThemeToggle';
 import { AuthContext } from '../context/AuthContext';
 import { useI18n } from '../context/I18nContext';
 import { apiClient } from '../services/apiService';
+import { useTheme } from '../context/ThemeContext';
 
 const ALL_BADGES = [
   { id: 'first_scan', name: 'Premier pas', icon: 'star', color: '#f59e0b', hint: 'Scanner ou importer un premier document.' },
@@ -103,7 +105,7 @@ const Profile = () => {
   // XP progress bar
   const xpForCurrentLevel = ((userData.level || 1) - 1) * 500;
   const xpForNextLevel = (userData.level || 1) * 500;
-  const xpProgress = Math.min(((userData.xp || 0) - xpForCurrentLevel) / (xpForNextLevel - xpForCurrentLevel) * 100, 100);
+  const xpProgress = Math.min(((userData.xp || 0) - xpForCurrentLevel) / (xpForNextLevel - xpForNextLevel) * 100, 100);
 
   return (
     <section className="screen screen--profile">
@@ -111,7 +113,10 @@ const Profile = () => {
         <div>
           <p className="eyebrow">{t('profile.eyebrow')}</p>
         </div>
-        <LanguageSwitcher />
+        <div className="header-action-group">
+          <ThemeToggle />
+          <LanguageSwitcher />
+        </div>
       </header>
 
       <div className="profile-hero profile-hero--editable">

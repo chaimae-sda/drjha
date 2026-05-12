@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Bell, BookOpen, Camera, CheckCheck, FileUp, Moon, Sun } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { useI18n } from '../context/I18nContext';
@@ -19,6 +19,23 @@ const Home = ({
 }) => {
   const { t } = useI18n();
   const { theme, toggleTheme } = useTheme();
+  const notificationsRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notificationsOpen && notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+        // Only close if we are not clicking the bell button itself (which handles its own toggle)
+        if (!event.target.closest('.home-bell')) {
+          onToggleNotifications();
+        }
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [notificationsOpen, onToggleNotifications]);
 
   return (
     <section className="screen screen--home">
@@ -45,7 +62,7 @@ const Home = ({
       </header>
 
       {notificationsOpen && (
-        <div className="home-floating-panel home-floating-panel--notifications">
+        <div className="home-floating-panel home-floating-panel--notifications" ref={notificationsRef}>
           <div className="home-panel__header">
             <strong>{t('home.notifications')}</strong>
             <button type="button" onClick={onMarkNotificationsRead}>

@@ -160,8 +160,11 @@ export const aiService = {
     const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
     const MISTRAL_KEY = import.meta.env.VITE_MISTRAL_API_KEY;
     
-    const prompt = `Résumez le texte suivant de manière simple et pédagogique pour un enfant de primaire. 
-Langue cible: ${targetLang === 'darija' ? 'Darija Marocain (caractères arabes)' : (targetLang === 'en' ? 'Anglais' : 'Français')}.
+    const prompt = `Résumez le texte suivant de manière simple et pédagogique. 
+IMPORTANT: Ne commencez PAS par "Résumé pour un enfant..." ou toute phrase similaire. Commencez directement par le résumé.
+Fournissez le résumé en deux parties:
+- D'abord en Français.
+- Ensuite en Darija Marocain (caractères arabes).
 Texte: ${text.slice(0, 5000)}`;
 
     if (GOOGLE_API_KEY) {

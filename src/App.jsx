@@ -108,7 +108,10 @@ const AppContent = () => {
     setCurrentView({ type: 'audio-player', id: storyId });
   };
 
+  const [isAudioActive, setIsAudioActive] = useState(false);
+
   const handleBack = () => {
+    setIsAudioActive(false);
     if (notificationsOpen) {
       setNotificationsOpen(false);
       return;
@@ -178,7 +181,11 @@ const AppContent = () => {
   const renderCurrentView = () => {
     if (currentView.type === 'reading') {
       return (
-        <Reading textId={currentView.id} onBack={handleBack} />
+        <Reading 
+          textId={currentView.id} 
+          onBack={handleBack} 
+          onAudioModeChange={setIsAudioActive}
+        />
       );
     }
 
@@ -229,6 +236,7 @@ const AppContent = () => {
           onTabChange={navigateToTab}
           isSubView={currentView.type !== 'tab'}
           onBack={handleBack}
+          hidden={isAudioActive || currentView.type === 'audio-player'}
         />
         <input ref={fileInputRef} type="file" hidden accept="image/*,.pdf" onChange={handleHomeFileUpload} />
       </div>

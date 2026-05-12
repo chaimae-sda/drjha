@@ -2,8 +2,9 @@ import React from 'react';
 import { BookOpen, ChevronLeft, Headphones, Home, ScanLine, User } from 'lucide-react';
 import { useI18n } from '../context/I18nContext';
 
-const BottomNav = ({ activeTab, onTabChange, isSubView, onBack }) => {
+const BottomNav = ({ activeTab, onTabChange, isSubView, onBack, hidden }) => {
   const { t } = useI18n();
+  if (hidden) return null;
   const tabs = [
     { id: 'home', label: t('nav.home'), Icon: Home },
     { id: 'library', label: t('nav.library'), Icon: BookOpen },

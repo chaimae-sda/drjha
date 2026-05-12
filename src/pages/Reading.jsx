@@ -24,12 +24,18 @@ const formatTime = (seconds) => {
 
 const assetUrl = (path) => `${import.meta.env.BASE_URL}${path}`;
 
-const Reading = ({ textId, onBack }) => {
+const Reading = ({ textId, onBack, onAudioModeChange }) => {
   const { t, language } = useI18n();
   const [text, setText] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [viewMode, setViewMode] = useState('content'); // content, audio, quiz, summary
+
+  useEffect(() => {
+    if (onAudioModeChange) {
+      onAudioModeChange(viewMode === 'audio');
+    }
+  }, [viewMode, onAudioModeChange]);
   const [summary, setSummary] = useState('');
   const [englishText, setEnglishText] = useState('');
   const [summarizing, setSummarizing] = useState(false);
@@ -284,11 +290,14 @@ const Reading = ({ textId, onBack }) => {
         </div>
 
         <div className="wave-strip" aria-hidden="true">
-          {Array.from({ length: 28 }).map((_, index) => (
+          {Array.from({ length: 32 }).map((_, index) => (
             <span
               key={index}
               className={`wave-strip__bar ${isPlaying ? 'is-playing' : ''}`}
-              style={{ animationDelay: `${index * 0.06}s`, height: `${18 + ((index * 7) % 32)}px` }}
+              style={{ 
+                animationDelay: `${index * 0.05}s`, 
+                height: `${12 + (Math.sin(index * 0.5) * 10 + 10) + Math.random() * 10}px` 
+              }}
             />
           ))}
         </div>
@@ -309,13 +318,13 @@ const Reading = ({ textId, onBack }) => {
 
         <div className="audio-controls">
           <button type="button" className="icon-chip icon-chip--dark" onClick={() => handleSeekBy(-10)}>
-            <RotateCcw size={20} />
+            <RotateCcw size={22} />
           </button>
           <button type="button" className="play-button" onClick={speakDarija}>
-            {isPlaying ? <Pause size={30} fill="currentColor" /> : <Play size={30} fill="currentColor" />}
+            {isPlaying ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" />}
           </button>
           <button type="button" className="icon-chip icon-chip--dark" onClick={() => handleSeekBy(10)}>
-            <RotateCw size={20} />
+            <RotateCw size={22} />
           </button>
         </div>
 
@@ -356,7 +365,7 @@ const Reading = ({ textId, onBack }) => {
             <span>Résumé IA</span>
             <Sparkles size={16} />
           </div>
-          <p className={language === 'darija' ? 'text-darija' : ''}>{summary}</p>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{summary}</p>
         </div>
         <button className="action-button action-button--primary" onClick={() => setViewMode('content')}>
           Retour au texte complet
@@ -414,10 +423,6 @@ const Reading = ({ textId, onBack }) => {
         <button type="button" className="feature-card" onClick={handleSummarize} disabled={summarizing}>
           <Sparkles size={18} className={summarizing ? 'spin-anim' : ''} />
           <span>{summarizing ? 'En cours...' : t('reading.simplify')}</span>
-        </button>
-        <button type="button" className="feature-card">
-          <Globe size={18} />
-          <span>{t('reading.changeLanguage')}</span>
         </button>
       </div>
     </section>

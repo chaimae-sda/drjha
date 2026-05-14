@@ -35,8 +35,8 @@ const Listen = ({ onSelectAudio }) => {
     <section className="screen screen--listen">
       <header className="screen-header">
         <div>
-          <p className="eyebrow">Module d'écoute</p>
-          <h1>Histoires Audio</h1>
+          <p className="eyebrow">{t('listen.eyebrow')}</p>
+          <h1>{t('listen.title')}</h1>
         </div>
         <LanguageSwitcher />
       </header>
@@ -47,17 +47,17 @@ const Listen = ({ onSelectAudio }) => {
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Rechercher une histoire..."
+          placeholder={t('listen.searchPlaceholder')}
         />
       </div>
 
       <div className="listen-grid">
-        {loading && <div className="empty-state">{t('library.loading')}</div>}
+        {loading && <div className="empty-state">{t('common.loading')}</div>}
         
         {!loading && filteredStories.length === 0 && (
           <div className="empty-state">
-            <strong>Aucune histoire trouvée</strong>
-            <span>Reviens plus tard pour de nouveaux contenus.</span>
+            <strong>{t('listen.emptyTitle')}</strong>
+            <span>{t('listen.emptyBody')}</span>
           </div>
         )}
 

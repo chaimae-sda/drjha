@@ -9,7 +9,7 @@ const BottomNav = ({ activeTab, onTabChange, isSubView, onBack, hidden }) => {
     { id: 'home', label: t('nav.home'), Icon: Home },
     { id: 'library', label: t('nav.library'), Icon: BookOpen },
     { id: 'scan', label: t('nav.scan'), Icon: ScanLine, isSpecial: true },
-    { id: 'listen', label: 'Écouter', Icon: Headphones },
+    { id: 'listen', label: t('nav.listen'), Icon: Headphones },
     { id: 'profile', label: t('nav.profile'), Icon: User },
   ];
 

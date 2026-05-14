@@ -101,7 +101,7 @@ const Reading = ({ textId, onBack, onAudioModeChange }) => {
   const handleSummarize = async () => {
     if (summarizing || !text) return;
     setSummarizing(true);
-    const result = await aiService.summarize(text.originalText, language);
+    const result = await aiService.summarize(text.originalText, 'darija');
     setSummary(result);
     setSummarizing(false);
     setViewMode('summary');

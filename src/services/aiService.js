@@ -51,6 +51,38 @@ const callMistral = async (prompt, temperature = 0.35) => {
   return data.choices?.[0]?.message?.content?.trim() || '';
 };
 
+const cleanModelText = (value = '') =>
+  String(value || '')
+    .replace(/^```[\s\S]*?\n/, '')
+    .replace(/```$/g, '')
+    .replace(/^["']|["']$/g, '')
+    .trim();
+
+const hasArabicScript = (value = '') => /[\u0600-\u06FF]/u.test(value);
+
+const isUsableDarijaTranslation = (value = '') => {
+  const cleaned = cleanModelText(value);
+  if (!cleaned || !hasArabicScript(cleaned)) {
+    return false;
+  }
+
+  const latinMatches = cleaned.match(/[A-Za-zÀ-ÿ]{3,}/g) || [];
+  const latinWordCount = latinMatches.filter((word) => !['drjha', 'darija'].includes(word.toLowerCase())).length;
+  return latinWordCount <= 2;
+};
+
+const buildDarijaPrompt = (text) => `ترجم النص التالي للدارجة المغربية المكتوبة بالحروف العربية.
+
+القواعد:
+- استعمل الدارجة المغربية الطبيعية اللي كيهضرو بها المغاربة، ماشي العربية الفصحى.
+- ممنوع الإنجليزية والفرنسية إلا إذا كان الاسم علم أو علامة تجارية.
+- ممنوع Markdown والعناوين والشرح. رجع غير الترجمة.
+- حافظ على المعنى وتسلسل القصة، وخلي الأسلوب بسيط وواضح.
+- استعمل كلمات بحال: شنو، فين، علاش، دابا، بزاف، شوية، بغا، مشى، شاف، قال، كان.
+
+النص:
+${text}`;
+
 /**
  * Darija Heuristic Layer
  */
@@ -78,18 +110,33 @@ export const aiService = {
     if (!text || text.trim().length === 0) return '';
     if (targetLang === 'fr') return text;
 
+    if (targetLang === 'darija' && MISTRAL_KEY) {
+      try {
+        const translated = await callMistral(buildDarijaPrompt(text.slice(0, 12000)), 0.25);
+        if (isUsableDarijaTranslation(translated)) {
+          return cleanModelText(translated);
+        }
+      } catch {
+        console.warn('Mistral Darija translation failed');
+      }
+    }
+
     if (GOOGLE_API_KEY) {
       const models = ['gemini-1.5-flash', 'gemini-2.0-flash'];
       for (const modelName of models) {
         try {
           const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GOOGLE_API_KEY}`;
           const langName = targetLang === 'darija' ? 'Moroccan Darija (Arabic script)' : (targetLang === 'en' ? 'English' : 'French');
+          const prompt =
+            targetLang === 'darija'
+              ? buildDarijaPrompt(text.slice(0, 12000))
+              : `Translate the following text to ${langName}. Provide ONLY the translation:\n\n${text}`;
           
           const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: `Translate the following text to ${langName}. Provide ONLY the translation:\n\n${text}` }] }],
+              contents: [{ parts: [{ text: prompt }] }],
               generationConfig: { temperature: 0.2 }
             })
           });
@@ -97,30 +144,20 @@ export const aiService = {
           if (response.ok) {
             const data = await response.json();
             const translated = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (translated) return translated.trim();
+            if (targetLang === 'darija') {
+              if (isUsableDarijaTranslation(translated)) {
+                return cleanModelText(translated);
+              }
+            } else if (translated) {
+              return cleanModelText(translated);
+            }
           }
         } catch (e) { console.warn(`Gemini translation failed`, e); }
       }
     }
 
-    if (targetLang === 'darija' && MISTRAL_KEY) {
-      try {
-        const response = await fetch(MISTRAL_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${MISTRAL_KEY}` },
-          body: JSON.stringify({
-            model: 'mistral-small-latest',
-            messages: [{ role: 'user', content: `Traduisez le texte français suivant en Darija authentique (caractères arabes). Uniquement la traduction:\n\n${text}` }],
-            temperature: 0.3,
-          }),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          return data.choices?.[0]?.message?.content?.trim();
-        }
-      } catch {
-        console.warn('Mistral translation failed');
-      }
+    if (targetLang === 'darija') {
+      return text;
     }
 
     try {
@@ -135,8 +172,31 @@ export const aiService = {
     }
   },
 
-  summarize: async (text) => {
-    const prompt = `Résumez le texte suivant de manière simple et pédagogique en 2-3 paragraphes. Utilisez un langage accessible pour les apprenants. Texte: ${text.slice(0, 5000)}`;
+  summarize: async (text, targetLang = 'fr') => {
+    const prompt =
+      targetLang === 'darija'
+        ? `لخص النص التالي بالدارجة المغربية المكتوبة بالحروف العربية.
+
+القواعد:
+- رجع ملخص قصير وواضح فـ 2 حتى 3 فقرات.
+- استعمل دارجة مغربية طبيعية، ماشي العربية الفصحى.
+- ممنوع الإنجليزية والفرنسية إلا إذا كان الاسم علم أو علامة تجارية.
+- ممنوع Markdown والعناوين والشرح. رجع غير الملخص.
+
+النص:
+${text.slice(0, 5000)}`
+        : `Résumez le texte suivant de manière simple et pédagogique en 2-3 paragraphes. Utilisez un langage accessible pour les apprenants. Texte: ${text.slice(0, 5000)}`;
+
+    if (targetLang === 'darija') {
+      try {
+        const mistralSummary = await callMistral(prompt, 0.3);
+        if (isUsableDarijaTranslation(mistralSummary)) {
+          return cleanModelText(mistralSummary);
+        }
+      } catch (e) {
+        console.error('Mistral Darija summarize error:', e);
+      }
+    }
 
     if (GOOGLE_API_KEY) {
       try {
@@ -148,7 +208,14 @@ export const aiService = {
         });
         if (response.ok) {
           const data = await response.json();
-          return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          const summary = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (targetLang === 'darija') {
+            if (isUsableDarijaTranslation(summary)) {
+              return cleanModelText(summary);
+            }
+          } else if (summary) {
+            return cleanModelText(summary);
+          }
         }
       } catch (e) {
         console.error('Summarize error:', e);
@@ -157,8 +224,12 @@ export const aiService = {
 
     try {
       const mistralSummary = await callMistral(prompt, 0.35);
-      if (mistralSummary) {
-        return mistralSummary;
+      if (targetLang === 'darija') {
+        if (isUsableDarijaTranslation(mistralSummary)) {
+          return cleanModelText(mistralSummary);
+        }
+      } else if (mistralSummary) {
+        return cleanModelText(mistralSummary);
       }
     } catch (e) {
       console.error('Mistral summarize error:', e);

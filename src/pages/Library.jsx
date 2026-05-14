@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Clock3, Heart, HelpCircle, MoreVertical, Search, SquareArrowOutUpRight, Star, Trash2 } from 'lucide-react';
+import { Clock3, Heart, HelpCircle, MoreVertical, Search, SquareArrowOutUpRight, Star, Trash2 } from 'lucide-react';
 import LanguageSwitcher from '../components/LanguageSwitcher';
 import { useI18n } from '../context/I18nContext';
 import { apiClient } from '../services/apiService';
@@ -208,10 +208,6 @@ const Library = ({ onSelectText, onSelectAudio }) => {
                     <span>
                       <Clock3 size={14} />
                       {formatDate(text.createdAt)}
-                    </span>
-                    <span>
-                      <BookOpen size={14} />
-                      {text.readCount || 0} {t('library.views')}
                     </span>
                     <span className={(text.generatedQuestions || []).length > 0 ? 'has-quiz' : 'ready-quiz'}>
                       <HelpCircle size={14} />

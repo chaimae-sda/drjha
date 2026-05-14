@@ -903,12 +903,15 @@ const normalizeProfileRecord = (profile, authUser = null) =>
     stats: profile?.stats || {},
   });
 
+const stripMarkdownHeadingMarkers = (value = '') =>
+  String(value || '').replace(/(^|\n)\s{0,3}#{1,6}\s+/g, '$1').trim();
+
 const normalizeTextRecord = (record) => ({
   _id: record.id,
   ownerId: record.owner_id,
-  title: record.title,
-  originalText: record.original_text,
-  darijaText: record.darija_text,
+  title: stripMarkdownHeadingMarkers(record.title),
+  originalText: stripMarkdownHeadingMarkers(record.original_text),
+  darijaText: stripMarkdownHeadingMarkers(record.darija_text),
   language: record.language || 'fr',
   source: record.source || 'upload',
   fileName: record.file_name || '',
